@@ -5,7 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const WebSocket = require('ws');
 require('dotenv').config();
-
+const MongoStore = require('connect-mongo')(session);
 const User = require('./models/User');
 const Game = require('./models/Game');
 const {Table, PRESET_TABLES} = require('./models/Table');
