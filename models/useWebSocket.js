@@ -103,8 +103,35 @@ const assignPlayersToTables = async (io) => {
 
 
 
+const jwt = require('jsonwebtoken');
+
 const handleWebSocketConnection = (socket, io) => {
-  console.log('WebSocket connected with ID:', socket.id);
+  // --- AUTHENTICATION MIDDLEWARE ---
+  const { token, userId } = socket.handshake.query || {};
+  const JWT_SECRET = process.env.JWT_SECRET || 'reemteamsecret';
+
+  if (!token || !userId) {
+    console.log('Socket connection rejected: missing token or userId');
+    socket.disconnect(true);
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.userId !== userId) {
+      console.log('Socket connection rejected: userId mismatch');
+      socket.disconnect(true);
+      return;
+    }
+    // Attach userId to socket for later use
+    socket.userId = userId;
+  } catch (err) {
+    console.log('Socket connection rejected: invalid token');
+    socket.disconnect(true);
+    return;
+  }
+
+  console.log('WebSocket connected with ID:', socket.id, 'for user:', userId);
 
   // Initialize enhanced systems if not already done
   if (!enhancedMatchmaking) {
