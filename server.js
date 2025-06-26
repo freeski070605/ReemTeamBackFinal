@@ -18,11 +18,15 @@ const app = express();
 
 
 // Configure CORS options
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      'http://localhost:3000',
+      'https://reem-team-front-final.vercel.app'
+    ];
+
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'https://reem-team-front-final.vercel.app'
-  ], // Allow local and deployed frontend
+  origin: allowedOrigins,
   credentials: true // Allow credentials (cookies, HTTP authentication)
 };
 
@@ -36,9 +40,18 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-  }
+    secure: process.env.NODE_ENV === 'production', // Secure cookie in production
+    httpOnly: true, // Prevent client-side JS access
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Stricter in production
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours (optional)
+  },
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI, // Use the same MongoDB URI as your app
+    collectionName: 'sessions', // Optional: specify a collection name
+    ttl: 24 * 60 * 60, // Session TTL in seconds (optional, defaults to session cookie maxAge)
+    autoRemove: 'interval', // Automatic removal of expired sessions
+    autoRemoveInterval: 10 // Interval in minutes for removing expired sessions
+  })
 }));
 
 // Ensure environment variables are set
@@ -101,10 +114,7 @@ const server = app.listen(PORT, () => {
 // Start the WebSocket server
 const io = require('socket.io')(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://reem-team-front-final.vercel.app"
-    ],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
     allowedHeaders: ["my-custom-header"]
