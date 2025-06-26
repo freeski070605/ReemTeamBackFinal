@@ -19,7 +19,10 @@ const app = express();
 
 // Configure CORS options
 const corsOptions = {
-  origin: 'http://localhost:3000', // Replace with your frontend's origin
+  origin: [
+    'http://localhost:3000',
+    'https://reem-team-front-final.vercel.app'
+  ], // Allow local and deployed frontend
   credentials: true // Allow credentials (cookies, HTTP authentication)
 };
 
@@ -95,7 +98,10 @@ const server = app.listen(PORT, () => {
 // Start the WebSocket server
 const io = require('socket.io')(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://reem-team-front-final.vercel.app"
+    ],
     methods: ["GET", "POST"],
     credentials: true,
     allowedHeaders: ["my-custom-header"]
