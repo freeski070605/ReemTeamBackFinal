@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const router = express.Router();
 
@@ -90,8 +91,13 @@ router.post('/login', async (req, res) => {
         user.lastLogin = new Date();
         await user.save();
 
+        // JWT secret (should be in env in production)
+        const JWT_SECRET = process.env.JWT_SECRET || 'reemteamsecret';
+        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
+
         // Enhanced user data response
         const userData = {
+            _id: user._id,
             username: user.username,
             email: user.email,
             chips: user.chips,
@@ -104,6 +110,7 @@ router.post('/login', async (req, res) => {
         req.session.userId = user._id;
         res.status(200).json({
             success: true,
+            token,
             user: userData,
             message: 'Login successful'
         });
