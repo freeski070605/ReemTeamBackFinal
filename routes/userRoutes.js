@@ -2,7 +2,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { authenticateToken } = require('../middleware/authMiddleware'); // Import authenticateToken
 const router = express.Router();
+
+
+
+
+
 
 // Register route with enhanced validation and response
 router.post('/register', async (req, res) => {
@@ -134,23 +140,26 @@ router.post('/logout', (req, res) => {
 });
 
 // Enhanced profile route with detailed user statistics
-router.get('/profile', async (req, res) => {
+
+router.get('/profile', authenticateToken, async (req, res) => {
     try {
-        if (!req.session.userId) {
+        // Ensure req.user is populated by the authenticateToken middleware
+        if (!req.user || !req.user._id) {
             return res.status(401).json({
                 success: false,
-                message: 'Session expired'
+                message: 'Authentication required: User ID not found in token.'
             });
         }
 
-        const user = await User.findById(req.session.userId)
-            .select('-password')
-            .lean();
+        // Use req.user._id, which comes from the decoded JWT token
+        const user = await User.findById(req.user._id)
+            .select('-password') // Exclude password from the response
+            .lean(); // Return a plain JavaScript object
 
         if (!user) {
             return res.status(404).json({
                 success: false,
-                message: 'User not found'
+                message: 'User not found.'
             });
         }
 
@@ -158,15 +167,17 @@ router.get('/profile', async (req, res) => {
             success: true,
             user: {
                 ...user,
-                winRate: user.gamesPlayed ? 
+                // Calculate win rate if gamesPlayed is not zero
+                winRate: user.gamesPlayed ?
                     (user.totalWinnings / user.gamesPlayed).toFixed(2) : 0
             }
         });
 
     } catch (error) {
+        console.error('Failed to fetch profile:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to fetch profile',
+            message: 'Failed to fetch profile due to server error.',
             error: error.message
         });
     }
