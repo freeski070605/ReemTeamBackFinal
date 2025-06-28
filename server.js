@@ -18,12 +18,13 @@ const app = express();
 
 
 // Configure CORS options
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
-  : [
-      'http://localhost:3000',
-      'https://reem-team-front-final.vercel.app'
-    ];
+const frontendOrigin = process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.replace(/\/$/, '') : 'https://reem-team-front-final.vercel.app';
+const allowedOrigins = [
+  'http://localhost:3000',
+  frontendOrigin
+];
+
+console.log('Allowed CORS Origins:', allowedOrigins);
 
 const corsOptions = {
   origin: allowedOrigins,
