@@ -143,16 +143,15 @@ router.post('/logout', (req, res) => {
 
 router.get('/profile', authenticateToken, async (req, res) => {
     try {
-        // Ensure req.user is populated by the authenticateToken middleware
-        if (!req.user || !req.user._id) {
+        // Use req.userId, which is explicitly set by the authenticateToken middleware
+        if (!req.userId) {
             return res.status(401).json({
                 success: false,
-                message: 'Authentication required: User ID not found in token.'
+                message: 'Authentication required: User ID not found.'
             });
         }
 
-        // Use req.user._id, which comes from the decoded JWT token
-        const user = await User.findById(req.user._id)
+        const user = await User.findById(req.userId)
             .select('-password') // Exclude password from the response
             .lean(); // Return a plain JavaScript object
 
