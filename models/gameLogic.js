@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
 const createDeck = () => {
-  const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
+  const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
   // Exclude 8, 9, 10 from the ranks
   const ranks = ['2', '3', '4', '5', '6', '7', 'J', 'Q', 'K', 'ace'];
   const deck = [];
