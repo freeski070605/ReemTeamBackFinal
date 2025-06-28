@@ -67,27 +67,24 @@ const isValidSpread = (cards) => {
   }
 
   // Updated values excluding 8, 9, 10
-  const values = {
-    '2': 2, '3': 3, '4': 4, '5': 5,
-    '6': 6, '7': 7, J: 11, Q: 12,
-    K: 13, ace: 1
-  };
+  const rankSequenceOrder = ['ace', '2', '3', '4', '5', '6', '7', 'J', 'Q', 'K'];
+  const getRankIndex = (rank) => rankSequenceOrder.indexOf(rank);
 
-  const sorted = [...cards].sort((a, b) => values[a.rank] - values[b.rank]);
+  const sorted = [...cards].sort((a, b) => getRankIndex(a.rank) - getRankIndex(b.rank));
   
   const sameSuit = sorted.every(c => c.suit === sorted[0].suit);
   
   if (!sameSuit) {
-    return false; // Added check for same suit
+    return false;
   }
 
-  // Check for standard consecutive sequence (e.g., 2, 3, 4, 5)
+  // Check for standard consecutive sequence based on rankSequenceOrder
   let isSequence = true;
   for (let i = 1; i < sorted.length; i++) {
-    const currentValue = values[sorted[i].rank];
-    const previousValue = values[sorted[i - 1].rank];
+    const currentRankIndex = getRankIndex(sorted[i].rank);
+    const previousRankIndex = getRankIndex(sorted[i - 1].rank);
     
-    if (currentValue !== previousValue + 1) {
+    if (currentRankIndex === -1 || previousRankIndex === -1 || currentRankIndex !== previousRankIndex + 1) {
       isSequence = false;
       break;
     }
@@ -95,12 +92,6 @@ const isValidSpread = (cards) => {
 
   if (isSequence) {
     return true;
-  }
-
-  // Check for Ace low sequence (A, 2, 3, 4, 5)
-  // When sorted, values would be [1, 2, 3, 4, 5]
-  if (sorted.length === 5 && values[sorted[0].rank] === 1 && values[sorted[1].rank] === 2 && values[sorted[2].rank] === 3 && values[sorted[3].rank] === 4 && values[sorted[4].rank] === 5) {
-      return true;
   }
 
   return false; // If neither same rank nor valid suited sequence
@@ -183,13 +174,16 @@ const isValidHit = (card, spread) => {
       }
 
       // Collect all ranks (spread + hit card) and map to values
-      const allRanks = [...spread.map(c => c.rank), card.rank];
-      const allValues = allRanks.map(rank => values[rank]).sort((a, b) => a - b);
+      const rankSequenceOrder = ['ace', '2', '3', '4', '5', '6', '7', 'J', 'Q', 'K'];
+      const getRankIndex = (rank) => rankSequenceOrder.indexOf(rank);
 
-      // Check for standard consecutive sequence (e.g., 2, 3, 4, 5)
+      const allRanks = [...spread.map(c => c.rank), card.rank];
+      const allRankIndices = allRanks.map(rank => getRankIndex(rank)).sort((a, b) => a - b);
+
+      // Check for standard consecutive sequence based on rankSequenceOrder
       let isSequence = true;
-      for (let i = 1; i < allValues.length; i++) {
-          if (allValues[i] !== allValues[i - 1] + 1) {
+      for (let i = 1; i < allRankIndices.length; i++) {
+          if (allRankIndices[i] === -1 || allRankIndices[i - 1] === -1 || allRankIndices[i] !== allRankIndices[i - 1] + 1) {
               isSequence = false;
               break;
           }
@@ -197,13 +191,6 @@ const isValidHit = (card, spread) => {
 
       if (isSequence) {
            console.log('isValidHit (backend): Valid hit on suited sequence (standard)');
-           return true;
-      }
-
-       // Check for Ace low sequence (A, 2, 3, 4, 5)
-      // When sorted, values would be [1, 2, 3, 4, 5]
-       if (allValues.length === 5 && allValues[0] === 1 && allValues[1] === 2 && allValues[2] === 3 && allValues[3] === 4 && allValues[4] === 5) {
-           console.log('isValidHit (backend): Valid hit on suited sequence (Ace low)');
            return true;
       }
 
