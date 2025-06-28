@@ -1,5 +1,6 @@
 const { Table } = require('../models/Table');
 const { runAiTurn } = require('../models/AiPlayer');
+const User = require('../models/User'); // Import User model
 const {
   initializeQueues,
   addToQueue,
@@ -456,6 +457,22 @@ class EnhancedMatchmaking {
     
     const { initializeGameState } = require('../models/gameLogic');
     
+    // Deduct stake from each player's chips at the start of a new hand
+    for (const player of table.players) {
+      if (player.isHuman) { // Only deduct from human players
+        const user = await User.findOne({ username: player.username });
+        if (user) {
+          user.chips -= table.stake;
+          // Ensure chips don't go below zero if somehow stake is higher than chips
+          user.chips = Math.max(0, user.chips);
+          await user.save();
+          // Update the player object in the table's players array to reflect new chip count
+          player.chips = user.chips;
+          console.log(`💸 Deducted ${table.stake} chips from ${player.username}. New balance: ${player.chips}`);
+        }
+      }
+    }
+
     // Initialize fresh game state
     initializeGameState(table);
     table.status = 'in_progress';

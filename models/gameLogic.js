@@ -264,6 +264,21 @@ const initializeGameState = (table) => {
     isLoading: false
   };
 
+  // Check for immediate 50-point win after dealing hands
+  const initialScores = table.gameState.playerHands.map((hand, index) =>
+    calculatePoints(hand, table.gameState.playerSpreads[index] || [])
+  );
+
+  const playerWith50 = initialScores.findIndex(score => score === 50);
+  if (playerWith50 !== -1) {
+    console.log(`🏆 IMMEDIATE 50 WIN: Player ${table.gameState.players[playerWith50].username} has 50 points exactly!`);
+    table.gameState.gameOver = true;
+    table.gameState.winners = [playerWith50];
+    table.gameState.winType = 'IMMEDIATE_50_WIN';
+    table.gameState.roundScores = initialScores;
+    console.log(`🟢 END GAME TRIGGERED: IMMEDIATE_50_WIN`);
+  }
+
   console.log('🎮 initializeGameState: Game state initialized with players:', table.gameState.players.map(p => ({ username: p.username, isHuman: p.isHuman })));
   console.log('🎮 initializeGameState: Player hands dealt:', table.gameState.playerHands.map((hand, i) => ({ player: table.gameState.players[i].username, cardCount: hand.length })));
   console.log(`🎮 initializeGameState: Fresh state created - gameOver: ${table.gameState.gameOver}, gameStarted: ${table.gameState.gameStarted}, timestamp: ${table.gameState.timestamp}`);
@@ -442,6 +457,26 @@ const processGameAction = (state, action, payload) => {
           newState.dropped = currentTurn;
           newState.roundScores = scores; // Store final scores
           console.log(`🟢 END GAME TRIGGERED: DROP (${newState.winType})`);
+          break;
+
+      case 'DECLARE_SPECIAL_WIN':
+          console.log(`🏆 DECLARE_SPECIAL_WIN: Player ${newState.players[currentTurn].username} attempting special win`);
+          const currentPlayerScore = calculatePoints(playerHand, newState.playerSpreads[currentTurn] || []);
+          
+          // Check for 41 points or less than 11 points (i.e., 10 or less)
+          if (currentPlayerScore === 41 || currentPlayerScore <= 10) {
+              console.log(`🏆 SPECIAL WIN: Player ${newState.players[currentTurn].username} declared special win with score ${currentPlayerScore}`);
+              newState.gameOver = true;
+              newState.winners = [currentTurn];
+              newState.winType = 'SPECIAL_WIN';
+              newState.roundScores = newState.playerHands.map((hand, index) =>
+                calculatePoints(hand, newState.playerSpreads[index] || [])
+              );
+              console.log(`🟢 END GAME TRIGGERED: SPECIAL_WIN`);
+          } else {
+              console.log(`🚫 DECLARE_SPECIAL_WIN: Invalid score for special win: ${currentPlayerScore}`);
+              // Optionally, could add a penalty or just ignore the action
+          }
           break;
 
       default:
