@@ -131,10 +131,15 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
+    // Clear the JWT token from the client-side (handled by AuthService.js)
+    // For server-side, if using sessions, destroy the session
     req.session.destroy((err) => {
         if (err) {
             console.error('Error destroying session:', err);
+            return res.status(500).json({ success: false, message: 'Failed to logout' });
         }
+        // Clear the cookie on the server-side
+        res.clearCookie('connect.sid'); // This is the default session cookie name for express-session
         res.status(200).json({ success: true, message: 'Logout successful' });
     });
 });
