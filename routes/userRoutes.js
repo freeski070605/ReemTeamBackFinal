@@ -52,8 +52,12 @@ router.post('/register', async (req, res) => {
             chips: 1000, // Starting chips for new users
             isAdmin: false,
             lastLogin: new Date(),
-            gamesPlayed: 0,
-            totalWinnings: 0
+            stats: {
+                gamesPlayed: 0,
+                wins: 0,
+                reemWins: 0,
+                totalEarnings: 0
+            }
         });
 
         await user.save();
@@ -108,8 +112,7 @@ router.post('/login', async (req, res) => {
             email: user.email,
             chips: user.chips,
             isAdmin: user.isAdmin,
-            gamesPlayed: user.gamesPlayed,
-            totalWinnings: user.totalWinnings,
+            stats: user.stats,
             lastLogin: user.lastLogin
         };
 
@@ -172,8 +175,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
             user: {
                 ...user,
                 // Calculate win rate if gamesPlayed is not zero
-                winRate: user.gamesPlayed ?
-                    (user.totalWinnings / user.gamesPlayed).toFixed(2) : 0
+                winRate: user.stats && user.stats.gamesPlayed ?
+                    (user.stats.totalEarnings / user.stats.gamesPlayed).toFixed(2) : 0
             }
         });
 
@@ -190,7 +193,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
 // Enhanced chip update route with transaction logging
 router.put('/:username/updateChips', async (req, res) => {
     const { username } = req.params;
-    const { chips, gameId, reason } = req.body;
+    const { chips, gameId, reason, transactionId } = req.body;
 
     try {
         const user = await User.findOne({ username });
@@ -203,7 +206,24 @@ router.put('/:username/updateChips', async (req, res) => {
 
         const previousBalance = user.chips;
         user.chips = chips;
-        user.totalWinnings += chips - previousBalance;
+        // Initialize stats if they don't exist
+        if (!user.stats) {
+            user.stats = {
+                gamesPlayed: 0,
+                wins: 0,
+                reemWins: 0,
+                totalEarnings: 0
+            };
+        }
+        user.stats.totalEarnings += chips - previousBalance;
+
+        // Check for duplicate transactionId to prevent double processing
+        if (transactionId && user.transactions.some(t => t.transactionId === transactionId)) {
+            return res.status(409).json({
+                success: false,
+                message: 'Transaction already processed'
+            });
+        }
 
         // Log transaction
         user.transactions = user.transactions || [];
@@ -212,7 +232,8 @@ router.put('/:username/updateChips', async (req, res) => {
             type: chips > previousBalance ? 'WIN' : 'LOSS',
             gameId,
             reason,
-            timestamp: new Date()
+            timestamp: new Date(),
+            transactionId // Store the transaction ID
         });
 
         await user.save();
@@ -251,8 +272,8 @@ router.get('/:username', async (req, res) => {
             success: true,
             user: {
                 ...user,
-                winRate: user.gamesPlayed ? 
-                    (user.totalWinnings / user.gamesPlayed).toFixed(2) : 0
+                winRate: user.stats && user.stats.gamesPlayed ?
+                    (user.stats.totalEarnings / user.stats.gamesPlayed).toFixed(2) : 0
             }
         });
 

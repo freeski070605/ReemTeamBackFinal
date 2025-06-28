@@ -21,6 +21,14 @@ const userSchema = new mongoose.Schema({
     result: { type: String, default: 'pending' },
     earnings: { type: Number, default: 0 },
     opponents: [String]
+}],
+transactions: [{
+    amount: { type: Number, required: true },
+    type: { type: String, enum: ['WIN', 'LOSS', 'DEPOSIT', 'WITHDRAWAL'], required: true },
+    gameId: { type: String }, // Optional, for game-related transactions
+    reason: { type: String }, // Optional, e.g., 'Game Start Stake', 'REEM Win'
+    timestamp: { type: Date, default: Date.now },
+    transactionId: { type: String, unique: true, sparse: true } // Unique ID for idempotency
 }]
 });
 
