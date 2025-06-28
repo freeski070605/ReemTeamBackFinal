@@ -531,9 +531,6 @@ socket.on('join_table', async ({ tableId, player }) => {
   });
 
   // Clean up on disconnect
-  socket.on('disconnect', () => {
-    clearInterval(heartbeatInterval);
-  });
 };
 
 
