@@ -1,6 +1,5 @@
 const colyseus = require('colyseus');
-const schema = require('@colyseus/schema');
-const { Schema, MapSchema, ArraySchema } = schema;
+const { Schema, MapSchema, ArraySchema, type } = require('@colyseus/schema');
 
 const {
     createDeck,
@@ -9,17 +8,18 @@ const {
     calculatePoints,
     isValidSpread,
     isValidHit,
-    initializeGameState: coreInitializeGameState, // Rename to avoid conflict
+    initializeGameState: coreInitializeGameState,
     processGameAction,
     calculateStateHash,
     findBestSpread,
     findBestHit,
 } = require('../models/gameLogic');
-const { runAiTurn } = require('../models/AiPlayer');
-const { Table } = require('../models/Table'); // To interact with MongoDB Table model
-const User = require('../models/User'); // To interact with MongoDB User model
 
-// Define the game state schema
+const { runAiTurn } = require('../models/AiPlayer');
+const { Table } = require('../models/Table');
+const User = require('../models/User');
+
+// === Schema Definitions ===
 class Card extends Schema {
     constructor(rank, suit) {
         super();
@@ -27,10 +27,8 @@ class Card extends Schema {
         this.suit = suit;
     }
 }
-schema.define(Card, {
-    rank: "string",
-    suit: "string"
-});
+type("string")(Card.prototype, "rank");
+type("string")(Card.prototype, "suit");
 
 class Player extends Schema {
     constructor(username, chips, isHuman, sessionId) {
@@ -38,91 +36,89 @@ class Player extends Schema {
         this.username = username;
         this.chips = chips;
         this.isHuman = isHuman;
-        this.sessionId = sessionId; // Colyseus client.sessionId
+        this.sessionId = sessionId;
         this.joinedAt = Date.now();
-        this.status = 'active'; // 'active', 'disconnected'
+        this.status = 'active';
         this.hitPenaltyRounds = 0;
-        this.hitCount = 0; // For tracking hits for penalty
+        this.hitCount = 0;
     }
 }
-schema.define(Player, {
-    username: "string",
-    chips: "number",
-    isHuman: "boolean",
-    sessionId: "string",
-    joinedAt: "number",
-    status: "string",
-    hitPenaltyRounds: "number",
-    hitCount: "number"
-});
+type("string")(Player.prototype, "username");
+type("number")(Player.prototype, "chips");
+type("boolean")(Player.prototype, "isHuman");
+type("string")(Player.prototype, "sessionId");
+type("number")(Player.prototype, "joinedAt");
+type("string")(Player.prototype, "status");
+type("number")(Player.prototype, "hitPenaltyRounds");
+type("number")(Player.prototype, "hitCount");
 
 class GameState extends Schema {
     constructor() {
         super();
         this.players = new ArraySchema();
-        this.playerHands = new ArraySchema(); // Array of ArraySchema<Card>
-        this.playerSpreads = new ArraySchema(); // Array of ArraySchema<ArraySchema<Card>>
-        this.deck = new ArraySchema(); // ArraySchema<Card>
-        this.discardPile = new ArraySchema(); // ArraySchema<Card>
+        this.playerHands = new ArraySchema();
+        this.playerSpreads = new ArraySchema();
+        this.deck = new ArraySchema();
+        this.discardPile = new ArraySchema();
         this.currentTurn = 0;
         this.hasDrawnCard = false;
         this.gameStarted = false;
         this.gameOver = false;
-        this.winners = new ArraySchema(); // Array of player indices
+        this.winners = new ArraySchema();
         this.winType = "";
-        this.roundScores = new ArraySchema(); // Array of numbers
+        this.roundScores = new ArraySchema();
         this.stake = 0;
-        this.caught = null; // Username of player who was caught
+        this.caught = null;
         this.gameEndMessage = "";
         this.gameEndReason = "";
-        this.chipBalances = new MapSchema(); // Map<string, number> username -> chips
+        this.chipBalances = new MapSchema();
         this.isInitialized = false;
-        this.isLoading = true; // Initial loading state for frontend
-        this.connectionStatus = 'disconnected'; // Frontend connection status
+        this.isLoading = true;
+        this.connectionStatus = 'disconnected';
         this.error = null;
         this.lastUpdateTime = Date.now();
-        this.playerPosition = -1; // Frontend specific, not directly used in backend logic
-        this.isMultiplayer = false; // True if more than 1 human player
-        this.timestamp = Date.now(); // For frontend to detect state changes
+        this.playerPosition = -1;
+        this.isMultiplayer = false;
+        this.timestamp = Date.now();
         this.gameStartingCountdown = 0;
-        this.message = ""; // General game message
-        this.spectators = new ArraySchema(); // ArraySchema<Player>
-        this.readyPlayers = new ArraySchema(); // ArraySchema<string> usernames
-        this.pot = 0; // Current pot value
+        this.message = "";
+        this.spectators = new ArraySchema();
+        this.readyPlayers = new ArraySchema();
+        this.pot = 0;
     }
 }
-schema.define(GameState, {
-    players: [Player],
-    playerHands: [[Card]],
-    playerSpreads: [[[Card]]],
-    deck: [Card],
-    discardPile: [Card],
-    currentTurn: "number",
-    hasDrawnCard: "boolean",
-    gameStarted: "boolean",
-    gameOver: "boolean",
-    winners: ["number"],
-    winType: "string",
-    roundScores: ["number"],
-    stake: "number",
-    caught: "string",
-    gameEndMessage: "string",
-    gameEndReason: "string",
-    chipBalances: { map: "number" },
-    isInitialized: "boolean",
-    isLoading: "boolean",
-    connectionStatus: "string",
-    error: "string",
-    lastUpdateTime: "number",
-    playerPosition: "number",
-    isMultiplayer: "boolean",
-    timestamp: "number",
-    gameStartingCountdown: "number",
-    message: "string",
-    spectators: [Player],
-    readyPlayers: ["string"],
-    pot: "number"
-});
+type([Player])(GameState.prototype, "players");
+type([[Card]])(GameState.prototype, "playerHands");
+type([[[Card]]])(GameState.prototype, "playerSpreads");
+type([Card])(GameState.prototype, "deck");
+type([Card])(GameState.prototype, "discardPile");
+type("number")(GameState.prototype, "currentTurn");
+type("boolean")(GameState.prototype, "hasDrawnCard");
+type("boolean")(GameState.prototype, "gameStarted");
+type("boolean")(GameState.prototype, "gameOver");
+type(["number"])(GameState.prototype, "winners");
+type("string")(GameState.prototype, "winType");
+type(["number"])(GameState.prototype, "roundScores");
+type("number")(GameState.prototype, "stake");
+type("string")(GameState.prototype, "caught");
+type("string")(GameState.prototype, "gameEndMessage");
+type("string")(GameState.prototype, "gameEndReason");
+type({ map: "number" })(GameState.prototype, "chipBalances");
+type("boolean")(GameState.prototype, "isInitialized");
+type("boolean")(GameState.prototype, "isLoading");
+type("string")(GameState.prototype, "connectionStatus");
+type("string")(GameState.prototype, "error");
+type("number")(GameState.prototype, "lastUpdateTime");
+type("number")(GameState.prototype, "playerPosition");
+type("boolean")(GameState.prototype, "isMultiplayer");
+type("number")(GameState.prototype, "timestamp");
+type("number")(GameState.prototype, "gameStartingCountdown");
+type("string")(GameState.prototype, "message");
+type([Player])(GameState.prototype, "spectators");
+type(["string"])(GameState.prototype, "readyPlayers");
+type("number")(GameState.prototype, "pot");
+
+
 
 class GameRoom extends colyseus.Room {
     constructor() {
