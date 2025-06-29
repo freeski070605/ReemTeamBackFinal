@@ -27,7 +27,17 @@ const allowedOrigins = [
 console.log('Allowed CORS Origins:', allowedOrigins);
 
 const corsOptions = {
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      console.error('CORS Error: Origin not allowed -', origin);
+      return callback(new Error(msg), false);
+    }
+    console.log('CORS: Origin allowed -', origin);
+    return callback(null, true);
+  },
   credentials: true, // Allow credentials (cookies, HTTP authentication)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Explicitly allow common methods
   allowedHeaders: ['Content-Type', 'Authorization'] // Explicitly allow common headers
@@ -120,7 +130,7 @@ const io = require('socket.io')(server, {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
-    allowedHeaders: ["my-custom-header"]
+    allowedHeaders: ['Content-Type', 'Authorization'] // Fix: Add Content-Type and Authorization
   },
   transports: ['websocket', 'polling'],
   pingTimeout: 60000
