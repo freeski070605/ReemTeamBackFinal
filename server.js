@@ -3,16 +3,18 @@ const session = require('express-session');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const WebSocket = require('ws');
 require('dotenv').config();
 const MongoStore = require('connect-mongo');
+const { Server } = require('colyseus');
+const { createServer } = require('http');
+const { WebSocketTransport } = require('@colyseus/ws-transport');
 const User = require('./models/User');
 const Game = require('./models/Game');
-const {Table, PRESET_TABLES} = require('./models/Table');
+const { Table, PRESET_TABLES } = require('./models/Table');
 const userRoutes = require('./routes/userRoutes');
 const gameRoutes = require('./routes/gameRoutes');
 const tableRoutes = require('./routes/tableRoutes'); // Ensure this is imported
-const { handleWebSocketConnection } = require('./models/useWebSocket');
+const { GameRoom } = require('./rooms/GameRoom');
 
 const app = express();
 
@@ -91,10 +93,6 @@ mongoose.connect(process.env.MONGODB_URI, {
 });
 
 // Routes
-app.use((req, res, next) => {
-    req.io = io;
-    next();
-});
 
 app.use('/users', userRoutes);
 app.use('/games', gameRoutes);
@@ -135,22 +133,12 @@ const server = app.listen(PORT, () => {
 // Graceful shutdown
 const gracefulShutdown = async () => {
   console.log('Shutting down server gracefully...');
-  // Notify all connected clients about the impending shutdown
-  io.emit('server_shutting_down', { message: 'Server is shutting down for maintenance. Please try again shortly.' });
-
-  // Give clients a moment to receive the message
-  await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
-
   // Close HTTP server
   server.close(() => {
     console.log('HTTP server closed.');
-    // Close WebSocket server
-    io.close(() => {
-      console.log('WebSocket server closed.');
-      // Perform any additional cleanup here, e.g., saving game states
-      console.log('Additional cleanup complete. Exiting process.');
-      process.exit(0);
-    });
+    // Perform any additional cleanup here, e.g., saving game states
+    console.log('Additional cleanup complete. Exiting process.');
+    process.exit(0);
   });
 
   // Force close after a timeout
@@ -181,40 +169,22 @@ process.on('unhandledRejection', (reason, promise) => {
   // For production, consider logging to an external service
 });
 
-// Start the WebSocket server
-const io = require('socket.io')(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'] // Fix: Add Content-Type and Authorization
-  },
-  transports: ['websocket', 'polling'],
-  pingTimeout: 60000
+// Create HTTP server
+const gameServer = createServer(app);
+
+// Create Colyseus server
+const colyseus = new Server({
+  transport: new WebSocketTransport({
+    server: gameServer, // Attach Colyseus to the existing HTTP server
+    pingInterval: 5000, // Ping clients every 5 seconds
+    pingMaxRetries: 3, // Disconnect after 3 missed pings
+  })
 });
 
-// Import cleanup functions
-const { cleanupDisconnectedPlayers, cleanupEmptyTables } = require('./utils/leaveTableHandler');
-const { assignPlayersToTables } = require('./models/useWebSocket');
+// Define Colyseus Rooms
+colyseus.define('game_room', GameRoom);
 
-// Set up periodic cleanup tasks
-const runPeriodicCleanup = async () => {
-  try {
-    await cleanupDisconnectedPlayers(io, 5, assignPlayersToTables); // 5 minute timeout
-    await cleanupEmptyTables(io);
-    await assignPlayersToTables(io);
-  } catch (error) {
-    console.error('Error in periodic cleanup:', error);
-  }
-};
+// Start the Colyseus server
+colyseus.listen(PORT);
 
-// Run cleanup every 30 seconds
-setInterval(runPeriodicCleanup, process.env.SOCKET_CLEANUP_INTERVAL || 30000);
-
-// Run table assignment every 10 seconds
-setInterval(() => assignPlayersToTables(io), process.env.SOCKET_ASSIGNMENT_INTERVAL || 10000);
-
-// Make io available to routes
-app.set('io', io);
-
-io.on('connection', (socket) => handleWebSocketConnection(socket, io));
+console.log(`Colyseus server listening on ws://localhost:${PORT}`);
