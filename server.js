@@ -28,7 +28,9 @@ console.log('Allowed CORS Origins:', allowedOrigins);
 
 const corsOptions = {
   origin: allowedOrigins,
-  credentials: true // Allow credentials (cookies, HTTP authentication)
+  credentials: true, // Allow credentials (cookies, HTTP authentication)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Explicitly allow common methods
+  allowedHeaders: ['Content-Type', 'Authorization'] // Explicitly allow common headers
 };
 
 // Middleware
