@@ -145,7 +145,19 @@ const handleWebSocketConnection = (socket, io) => {
   const playerTables = new Set();
 
   socket.on('connect_error', (error) => {
-    console.log('Connection error:', error);
+    console.error('Socket connection error:', error);
+  });
+
+  socket.on('disconnecting', (reason) => {
+    console.log(`Socket ${socket.id} is disconnecting. Reason: ${reason}`);
+    // Iterate over all rooms the socket is in, except its own ID room
+    for (const room of socket.rooms) {
+      if (room !== socket.id) {
+        console.log(`Socket ${socket.id} leaving room: ${room}`);
+        // You could emit a 'player_leaving_room' event here if needed
+        // io.to(room).emit('player_leaving_room', { socketId: socket.id, reason });
+      }
+    }
   });
 
   socket.on('connect', async () => {
@@ -451,13 +463,26 @@ socket.on('join_table', async ({ tableId, player }) => {
   
    
 
-  socket.on('disconnect', async () => {
+  socket.on('disconnect', async (reason) => {
     try {
-      console.log('Client disconnected:', socket.id);
+      console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
   
       let playerUsername = null;
-  
-      // Remove from queues
+      let playerTableId = null;
+
+      // Find if the disconnected socket was associated with a player in any table
+      const tablesWithPlayer = await Table.find({ 'players.socketId': socket.id });
+      for (const table of tablesWithPlayer) {
+        const player = table.players.find(p => p.socketId === socket.id);
+        if (player) {
+          playerUsername = player.username;
+          playerTableId = table._id;
+          console.log(`Player ${playerUsername} (socket ${socket.id}) disconnected from table ${playerTableId}`);
+          break; // Found the player, no need to check other tables
+        }
+      }
+
+      // Remove from queues if the player was in a queue
       getQueues().forEach((queue, stake) => {
           const playerInQueue = queue.find(p => p.socketId === socket.id);
           if (playerInQueue) {
@@ -466,27 +491,20 @@ socket.on('join_table', async ({ tableId, player }) => {
           }
       });
   
-      // Handle disconnection from tables
-      const tables = await Table.find({ 'players.socketId': socket.id });
-  
-      for (const table of tables) {
-        const player = table.players.find(p => p.socketId === socket.id);
-        if (player) {
-          playerUsername = player.username;
-          console.log(`Player ${playerUsername} disconnected from table ${table._id}`);
-          
-          // Use optimized disconnect handling
-          await handlePlayerLeave({
-            tableId: table._id,
-            username: playerUsername,
-            io,
-            isDisconnect: true,
-            assignPlayersToTables
-          });
-        }
+      // Handle disconnection from tables using the optimized handler
+      if (playerUsername && playerTableId) {
+        await handlePlayerLeave({
+          tableId: playerTableId,
+          username: playerUsername,
+          io,
+          isDisconnect: true, // Indicate this is a disconnect, not a voluntary leave
+          assignPlayersToTables
+        });
+      } else {
+        console.log(`Disconnected socket ${socket.id} was not found as an active player in any table.`);
       }
   
-      // Trigger table reassignment after disconnect
+      // Trigger table reassignment after disconnect to fill empty spots
       await assignPlayersToTables(io);
   
     } catch (error) {

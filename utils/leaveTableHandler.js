@@ -292,18 +292,41 @@ const handlePlayerReconnect = async ({ tableId, username, socketId, io = null })
       
       await saveTableWithRetry(table);
       
-      console.log(`🔄 Player ${username} reconnected to table ${tableId}`);
+      console.log(`🔄 Player ${username} reconnected to table ${tableId} with new socket ID: ${socketId}`);
       
       if (io) {
-        // Broadcast reconnection
+        // Broadcast reconnection to all players at the table
         io.to(tableId).emit('player_reconnected', {
           username: username,
-          players: table.players
+          players: table.players.map(p => ({
+            username: p.username,
+            isHuman: p.isHuman,
+            status: p.status
+          })) // Send simplified player info
         });
         
-        // Send current game state to reconnected player
+        // Send current game state to the reconnected player only
         if (table.gameState) {
+          console.log(`Sending state_sync to reconnected player ${username} (socket ${socketId})`);
           io.to(socketId).emit('state_sync', table.gameState);
+        } else {
+          // If no game state, send waiting state
+          io.to(socketId).emit('state_sync', {
+            players: table.players,
+            stake: table.stake,
+            message: 'Waiting for players to be ready...',
+            gameStarted: false,
+            playerHands: [],
+            playerSpreads: [],
+            deck: [],
+            discardPile: [],
+            currentTurn: 0,
+            gameOver: false,
+            readyPlayers: table.readyPlayers || [],
+            isInitialized: true,
+            isLoading: false,
+            timestamp: Date.now()
+          });
         }
       }
       

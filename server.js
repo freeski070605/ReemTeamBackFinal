@@ -76,8 +76,16 @@ if (!process.env.MONGODB_URI || !process.env.SESSION_SECRET || !process.env.FRON
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
-}).then(() => {
+}).then(async () => {
   console.log('MongoDB connected');
+  // Clear all sessions on server start to ensure all users are logged out
+  // This is crucial for production readiness and handling server restarts
+  try {
+    await mongoose.connection.db.collection('sessions').deleteMany({});
+    console.log('All existing sessions cleared from MongoDB.');
+  } catch (error) {
+    console.error('Error clearing sessions on startup:', error);
+  }
 }).catch((err) => {
   console.error('MongoDB connection error:', err);
 });
@@ -122,6 +130,55 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   initializePresetTables();
   console.log(`Server is running on port ${PORT}`);
+});
+
+// Graceful shutdown
+const gracefulShutdown = async () => {
+  console.log('Shutting down server gracefully...');
+  // Notify all connected clients about the impending shutdown
+  io.emit('server_shutting_down', { message: 'Server is shutting down for maintenance. Please try again shortly.' });
+
+  // Give clients a moment to receive the message
+  await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
+
+  // Close HTTP server
+  server.close(() => {
+    console.log('HTTP server closed.');
+    // Close WebSocket server
+    io.close(() => {
+      console.log('WebSocket server closed.');
+      // Perform any additional cleanup here, e.g., saving game states
+      console.log('Additional cleanup complete. Exiting process.');
+      process.exit(0);
+    });
+  });
+
+  // Force close after a timeout
+  setTimeout(() => {
+    console.error('Forcing shutdown after timeout.');
+    process.exit(1);
+  }, 10000); // 10 seconds timeout
+};
+
+// Listen for termination signals
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+// Catch unhandled exceptions and rejections
+process.on('uncaughtException', (err) => {
+  console.error('🚨 Uncaught Exception:', err.message, err.stack);
+  // Attempt graceful shutdown, but exit quickly if it fails
+  gracefulShutdown();
+  setTimeout(() => {
+    console.error('Forcing exit due to uncaught exception after graceful shutdown attempt.');
+    process.exit(1);
+  }, 5000); // 5 seconds to exit
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Application specific logging, throwing an error, or other logic here
+  // For production, consider logging to an external service
 });
 
 // Start the WebSocket server
