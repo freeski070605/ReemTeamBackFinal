@@ -5,8 +5,6 @@ const runAiTurn = (gameState) => {
   const playerIndex = newState.currentTurn;
   const player = newState.players[playerIndex];
 
-  console.log(`🤖 AI Turn: Player ${player.username} (index ${playerIndex}), gameOver: ${newState.gameOver}, hand size: ${hand.length}, deck size: ${newState.deck.length}, discard pile size: ${newState.discardPile.length}`);
-
   if (player.isHuman || newState.gameOver) {
     console.log(`🤖 AI Turn: Early return - isHuman: ${player.isHuman}, gameOver: ${newState.gameOver}`);
     return newState;
@@ -15,6 +13,7 @@ const runAiTurn = (gameState) => {
   const hand = newState.playerHands[playerIndex];
   const spreads = newState.playerSpreads[playerIndex] || [];
 
+  console.log(`🤖 AI Turn: Player ${player.username} (index ${playerIndex}), gameOver: ${newState.gameOver}, hand size: ${hand.length}, deck size: ${newState.deck.length}, discard pile size: ${newState.discardPile.length}`);
   console.log(`🤖 AI Turn: Hand before draw: ${hand.map(c => `${c.rank}${c.suit[0]}`).join(', ')}`);
 
   // Draw
