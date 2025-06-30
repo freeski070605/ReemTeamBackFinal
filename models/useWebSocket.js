@@ -442,7 +442,7 @@ socket.on('join_table', async ({ tableId, player }) => {
 
   socket.on('game_action', (data) => {
       console.log(`🎯 WebSocket: Received game_action event:`, data);
-      handleGameAction(io, socket, data);
+      handleGameAction(io, socket, data, gameStateManager); // Pass gameStateManager instance
   });
   
 

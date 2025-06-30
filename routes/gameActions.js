@@ -4,9 +4,7 @@ const { Table } = require('../models/Table');
 const User = require('../models/User'); // Import User model
 
 const GameStateManager = require('../utils/gameStateManager');
-let gameStateManager = null;
-
-const handleGameAction = async (io, socket, { tableId, action, payload }) => {
+const handleGameAction = async (io, socket, { tableId, action, payload }, gameStateManagerInstance) => {
     try {
         console.log(`🎯 handleGameAction: ${action} from socket ${socket.id} at table ${tableId}`);
         
@@ -37,18 +35,8 @@ const handleGameAction = async (io, socket, { tableId, action, payload }) => {
         console.log(`📡 handleGameAction: Emitted game_update with gameOver: ${updatedState.gameOver}`);
 
         if (!updatedState.gameOver && !updatedState.players[updatedState.currentTurn].isHuman) {
-            console.log(`🤖 handleGameAction: Scheduling AI turn for player ${updatedState.players[updatedState.currentTurn].username}`);
-            setTimeout(async () => {
-                const updatedTable = await Table.findById(tableId);
-                console.log(`🤖 handleGameAction: Retrieved table for AI turn - gameOver: ${updatedTable.gameState.gameOver}`);
-                const aiState = runAiTurn(updatedTable.gameState);
-                console.log(`🤖 handleGameAction: AI turn complete - gameOver: ${aiState.gameOver}, winType: ${aiState.winType}, winners: [${aiState.winners?.join(',') || ''}]`);
-                updatedTable.gameState = aiState;
-                await updatedTable.save();
-                console.log(`💾 handleGameAction: AI state saved to database`);
-                io.to(tableId).emit('game_update', aiState);
-                console.log(`📡 handleGameAction: Emitted AI game_update with gameOver: ${aiState.gameOver}`);
-            }, 800);
+            console.log(`🤖 handleGameAction: Delegating AI turn to GameStateManager for player ${updatedState.players[updatedState.currentTurn].username}`);
+            gameStateManagerInstance.handleAiTurn(tableId);
         } else if (updatedState.gameOver) {
             console.log(`🏁 handleGameAction: Game ended, processing results...`);
             const { winners, winType, roundScores, stake, players } = updatedState;

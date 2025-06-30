@@ -24,7 +24,6 @@ const allowedOrigins = [
   frontendOrigin
 ];
 
-console.log('Allowed CORS Origins:', allowedOrigins);
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -35,7 +34,6 @@ const corsOptions = {
       console.error('CORS Error: Origin not allowed -', origin);
       return callback(new Error(msg), false);
     }
-    console.log('CORS: Origin allowed -', origin);
     return callback(null, true);
   },
   credentials: true, // Allow credentials (cookies, HTTP authentication)
