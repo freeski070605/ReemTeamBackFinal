@@ -26,7 +26,6 @@ const allowedOrigins = [
   frontendOrigin
 ];
 
-console.log('Allowed CORS Origins:', allowedOrigins);
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -180,7 +179,7 @@ const colyseus = new Server({
 
 // Define Colyseus Rooms dynamically based on stake
 // The ':stake' parameter allows clients to join rooms like 'tonk_1', 'tonk_5', etc.
-colyseus.define('tonk_:stake', GameRoom);
+colyseus.define('tonk_:stake', GameRoom, { stake: "$params.stake" });
 
 // Start the Colyseus server
 colyseus.listen(PORT);

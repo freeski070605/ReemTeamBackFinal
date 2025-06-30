@@ -107,19 +107,12 @@ class EnhancedMatchmaking {
 
     // Priority 2: Fill tables with waiting human players
     while (table.players.length < 4 && queue.length > 0) {
-      const player = queue.shift();
+      const player = queue.shift(); // Remove player from queue
       
       if (!table.players.some(p => p.username === player.username)) {
         if (gameIsActive && aiCount > 0) {
           // Human joining active AI game - initiate graceful transition
           await this.initiateGracefulTransition(table, player);
-          // ✅ CRITICAL FIX: Remove player from queue after transition setup
-          const queues = getQueues();
-          const stakeQueue = queues.get(table.stake) || [];
-          const playerIndex = stakeQueue.findIndex(p => p.username === player.username);
-          if (playerIndex !== -1) {
-            stakeQueue.splice(playerIndex, 1);
-          }
         } else {
           // Standard join
           await this.addPlayerToTable(table, player);
@@ -176,6 +169,15 @@ class EnhancedMatchmaking {
     // --- Also register transition in GameStateManager for cross-system sync ---
     if (gameStateManagerSingleton && typeof gameStateManagerSingleton.registerTransitionFromMatchmaking === 'function') {
       gameStateManagerSingleton.registerTransitionFromMatchmaking(table, newPlayer);
+    }
+
+    // Remove player from queue immediately after transition setup
+    const queues = getQueues();
+    const stakeQueue = queues.get(table.stake) || [];
+    const playerIndex = stakeQueue.findIndex(p => p.username === newPlayer.username);
+    if (playerIndex !== -1) {
+      stakeQueue.splice(playerIndex, 1);
+      console.log(`✅ Removed ${newPlayer.username} from queue after initiating transition.`);
     }
 
     // Notify all players about incoming transition
