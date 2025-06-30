@@ -5,7 +5,7 @@ const runAiTurn = (gameState) => {
   const playerIndex = newState.currentTurn;
   const player = newState.players[playerIndex];
 
-  console.log(`🤖 AI Turn: Player ${player.username} (index ${playerIndex}), gameOver: ${newState.gameOver}`);
+  console.log(`🤖 AI Turn: Player ${player.username} (index ${playerIndex}), gameOver: ${newState.gameOver}, hand size: ${hand.length}, deck size: ${newState.deck.length}, discard pile size: ${newState.discardPile.length}`);
 
   if (player.isHuman || newState.gameOver) {
     console.log(`🤖 AI Turn: Early return - isHuman: ${player.isHuman}, gameOver: ${newState.gameOver}`);
@@ -15,6 +15,8 @@ const runAiTurn = (gameState) => {
   const hand = newState.playerHands[playerIndex];
   const spreads = newState.playerSpreads[playerIndex] || [];
 
+  console.log(`🤖 AI Turn: Hand before draw: ${hand.map(c => `${c.rank}${c.suit[0]}`).join(', ')}`);
+
   // Draw
   const topDiscard = newState.discardPile.length > 0 ? newState.discardPile[newState.discardPile.length - 1] : null;
   const canUseDiscard = topDiscard && isValidHit(topDiscard, spreads.length > 0 ? spreads[0] : []);
@@ -22,11 +24,17 @@ const runAiTurn = (gameState) => {
   if (canUseDiscard) {
     const card = newState.discardPile.pop();
     hand.push(card);
+    console.log(`🤖 AI Turn: Drew from discard pile: ${card.rank} of ${card.suit}. Hand size: ${hand.length}`);
   } else if (newState.deck.length > 0) {
     const card = newState.deck.pop();
     hand.push(card);
+    console.log(`🤖 AI Turn: Drew from deck: ${card.rank} of ${card.suit}. Hand size: ${hand.length}`);
+  } else {
+    console.log(`🤖 AI Turn: No cards to draw from deck or discard pile.`);
   }
   newState.hasDrawnCard = true;
+  console.log(`🤖 AI Turn: Hand after draw: ${hand.map(c => `${c.rank}${c.suit[0]}`).join(', ')}`);
+
 
   // Spread
   const bestSpread = findBestSpread(hand);
@@ -36,6 +44,7 @@ const runAiTurn = (gameState) => {
       const i = hand.findIndex(c => c.rank === card.rank && c.suit === card.suit);
       if (i !== -1) hand.splice(i, 1);
     });
+    console.log(`🤖 AI Turn: Performed spread: ${bestSpread.map(c => `${c.rank}${c.suit[0]}`).join(', ')}. Hand size: ${hand.length}`);
 
     if (spreads.length >= 2) {
       console.log(`🏆 AI REEM WIN: Player ${player.username} achieved REEM with ${spreads.length} spreads`);
@@ -45,6 +54,8 @@ const runAiTurn = (gameState) => {
       console.log(`🏆 AI REEM WIN: Setting gameOver = true, winners = [${playerIndex}], winType = REEM`);
       return newState;
     }
+  } else {
+    console.log(`🤖 AI Turn: No valid spread found.`);
   }
 
   // Hit
@@ -53,10 +64,14 @@ const runAiTurn = (gameState) => {
     const { cardIndex, targetIndex, spreadIndex } = hitInfo;
     const card = hand.splice(cardIndex, 1)[0];
     newState.playerSpreads[targetIndex][spreadIndex].push(card);
+    console.log(`🤖 AI Turn: Performed hit with ${card.rank} of ${card.suit} on player ${targetIndex}'s spread ${spreadIndex}. Hand size: ${hand.length}`);
+  } else {
+    console.log(`🤖 AI Turn: No valid hit found.`);
   }
 
   // Drop
   const score = calculatePoints(hand, spreads);
+  console.log(`🤖 AI Turn: Hand score before discard/drop check: ${score}`);
   if (score <= 5) {
     const allScores = newState.playerHands.map((h, i) =>
       calculatePoints(h, newState.playerSpreads[i] || [])
@@ -87,7 +102,7 @@ const runAiTurn = (gameState) => {
   newState.hasDrawnCard = false;
   newState.currentTurn = (playerIndex + 1) % newState.players.length;
 
-  console.log(`🤖 AI Turn Complete: Player ${player.username} discarded ${discard.rank} of ${discard.suit}, next turn: ${newState.currentTurn}`);
+  console.log(`🤖 AI Turn Complete: Player ${player.username} discarded ${discard.rank} of ${discard.suit}, next turn: ${newState.currentTurn}, hand size: ${hand.length}`);
   
   // Check if AI has 0 cards after discard (regular win)
   if (hand.length === 0) {

@@ -537,13 +537,21 @@ class GameStateManager {
    * Enhanced AI turn handling
    */
   async handleAiTurn(tableId) {
+    console.log(`🤖 GameStateManager: handleAiTurn called for table ${tableId}`);
     try {
       const table = await Table.findById(tableId);
-      if (!table || !table.gameState) return;
+      if (!table || !table.gameState) {
+        console.log(`🤖 GameStateManager: Table ${tableId} or gameState not found. Exiting AI turn.`);
+        return;
+      }
 
+      console.log(`🤖 GameStateManager: Before runAiTurn - currentTurn: ${table.gameState.currentTurn}, gameOver: ${table.gameState.gameOver}`);
       const updatedState = runAiTurn(table.gameState);
+      console.log(`🤖 GameStateManager: After runAiTurn - currentTurn: ${updatedState.currentTurn}, gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}`);
+
       table.gameState = updatedState;
       await table.save();
+      console.log(`🤖 GameStateManager: Game state saved for table ${tableId}.`);
 
       // Broadcast with enhanced info
       this.io.to(tableId).emit('game_update', {
@@ -551,15 +559,20 @@ class GameStateManager {
         lastAction: 'ai_turn',
         timestamp: Date.now()
       });
+      console.log(`🤖 GameStateManager: Emitted game_update for table ${tableId}.`);
 
       // Check for game end
       if (updatedState.gameOver) {
+        console.log(`🤖 GameStateManager: Game over detected. Calling handleGameEnd.`);
         await this.handleGameEnd(tableId, updatedState);
       } else if (!updatedState.players[updatedState.currentTurn].isHuman) {
+        console.log(`🤖 GameStateManager: Next turn is AI. Scheduling next AI turn in 800ms.`);
         setTimeout(() => this.handleAiTurn(tableId), 800);
+      } else {
+        console.log(`🤖 GameStateManager: Next turn is human. AI turn sequence complete.`);
       }
     } catch (error) {
-      console.error('Enhanced AI turn error:', error);
+      console.error('🚨 Enhanced AI turn error:', error);
     }
   }
 
