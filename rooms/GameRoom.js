@@ -133,23 +133,36 @@ class GameRoom extends colyseus.Room {
     }
 
     async onCreate(options) {
-        console.log("GameRoom created!", options);
+        console.log(`[GameRoom ${this.roomId}] created with options:`, options);
         this.setState(new GameState());
 
-        // Load table from DB or create if not exists (for persistent rooms)
-        this.tableDb = await Table.findById(options.tableId);
+        // Load table from DB
+        // When a room is created via matchMaker.joinOrCreate, the `options` will contain
+        // the `stake` from the room name (e.g., 'tonk_5' -> stake: 5).
+        // We need to find or create a Table document in MongoDB based on this stake.
+        const stake = options.stake;
+        if (!stake) {
+            throw new Error("Stake not provided in room options. Cannot create room.");
+        }
+
+        // Try to find an existing table for this stake that is not full
+        this.tableDb = await Table.findOne({ stake: stake, 'players.length': { $lt: 4 } });
+
         if (!this.tableDb) {
-            console.error(`Table ${options.tableId} not found in DB. Creating a new one.`);
+            // If no suitable table exists, create a new one
+            console.log(`[GameRoom ${this.roomId}] No existing table for stake $${stake} found. Creating a new one.`);
             this.tableDb = new Table({
-                _id: options.tableId,
-                name: `Table ${options.tableId.slice(-4)}`,
-                stake: options.stake || 10,
+                name: `Tonk Table $${stake}`,
+                stake: stake,
                 players: [],
-                isActive: true,
-                gameState: null,
+                status: 'waiting',
+                spectators: [],
                 readyPlayers: []
             });
             await this.tableDb.save();
+            console.log(`[GameRoom ${this.roomId}] Created new table in DB: ${this.tableDb._id} for stake $${stake}`);
+        } else {
+            console.log(`[GameRoom ${this.roomId}] Found existing table in DB: ${this.tableDb._id} for stake $${stake}`);
         }
 
         // Initialize Colyseus state from DB table state if available
@@ -188,47 +201,82 @@ class GameRoom extends colyseus.Room {
     }
 
     async onJoin(client, options) {
-        console.log(`${client.sessionId} (${options.username}) joined the room!`);
+        console.log(`[GameRoom ${this.roomId}] ${client.sessionId} (${options.username}) joined the room! Options:`, options);
 
         // Check if player is already in the room (reconnection)
-        const existingPlayer = this.state.players.find(p => p.sessionId === client.sessionId);
-        if (existingPlayer) {
-            existingPlayer.status = 'active';
-            console.log(`Player ${existingPlayer.username} reconnected.`);
+        const { username, chips, stake } = options;
+
+        // 1. Check for reconnection
+        const existingPlayerInState = this.state.players.find(p => p.sessionId === client.sessionId);
+        if (existingPlayerInState) {
+            existingPlayerInState.status = 'active';
+            console.log(`[GameRoom ${this.roomId}] Player ${existingPlayerInState.username} reconnected.`);
             this.broadcast("player_reconnected", {
                 sessionId: client.sessionId,
-                username: existingPlayer.username,
+                username: existingPlayerInState.username,
                 players: this.state.players.toJSON()
             });
             client.send("state_sync", this.state.toJSON());
             return;
         }
 
-        // Add new player to the state
-        const newPlayer = new Player(options.username, options.chips, true, client.sessionId);
-        this.state.players.push(newPlayer);
-        this.state.chipBalances.set(options.username, options.chips); // Initialize chip balance
+        // 2. Check if player is already in the DB table (e.g., joined from lobby, then reconnected)
+        let playerInDb = this.tableDb.players.find(p => p.username === username);
 
-        // Update DB table players
-        this.tableDb.players.push({
-            username: options.username,
-            chips: options.chips,
-            isHuman: true,
-            socketId: client.sessionId, // Store Colyseus sessionId
-            joinedAt: new Date(),
-            status: 'active'
-        });
+        if (playerInDb) {
+            // Player exists in DB table, update their session ID and status
+            playerInDb.socketId = client.sessionId;
+            playerInDb.status = 'active';
+            playerInDb.chips = chips; // Update chips in DB as well
+            console.log(`[GameRoom ${this.roomId}] Updated existing player in DB: ${username}`);
+
+            // Find and update the player in Colyseus state if they exist there
+            const playerInState = this.state.players.find(p => p.username === username);
+            if (playerInState) {
+                playerInState.assign({
+                    sessionId: client.sessionId,
+                    status: 'active',
+                    chips: chips
+                });
+                console.log(`[GameRoom ${this.roomId}] Updated existing player in Colyseus state: ${username}`);
+            } else {
+                // This case should ideally not happen if DB and state are in sync,
+                // but if it does, add them to state.
+                const newPlayer = new Player(username, chips, true, client.sessionId);
+                this.state.players.push(newPlayer);
+                this.state.chipBalances.set(username, chips);
+                console.log(`[GameRoom ${this.roomId}] Added existing DB player to Colyseus state: ${username}`);
+            }
+
+        } else {
+            // New player joining the table for the first time
+            console.log(`[GameRoom ${this.roomId}] Adding new player to DB and state: ${username}`);
+            const newPlayer = new Player(username, chips, true, client.sessionId);
+            this.state.players.push(newPlayer);
+            this.state.chipBalances.set(username, chips);
+
+            this.tableDb.players.push({
+                username: username,
+                chips: chips,
+                isHuman: true,
+                socketId: client.sessionId,
+                joinedAt: new Date(),
+                status: 'active'
+            });
+        }
+
         await this.tableDb.save();
 
         // Notify all clients about the new player
         this.broadcast("player_joined", {
             sessionId: client.sessionId,
-            username: options.username,
+            username: username,
             players: this.state.players.toJSON()
         });
 
         // Send initial state to the joining client
         client.send("state_sync", this.state.toJSON());
+        console.log(`[GameRoom ${this.roomId}] Sent initial state to ${username}`);
 
         // Check if game can start
         this.checkAndStartGame();
@@ -537,7 +585,75 @@ class GameRoom extends colyseus.Room {
         const humanPlayers = activePlayers.filter(p => p.isHuman);
         const aiPlayers = activePlayers.filter(p => !p.isHuman);
 
-        // Add AI if only 1 human and no AI present
+        // Remove AI if 2 or more human players are present and AI exists
+        if (humanPlayers.length >= 2 && aiPlayers.length > 0) {
+            console.log(`🧹 Removing AI player(s) from table ${this.tableDb._id} as human players count is ${humanPlayers.length}`);
+            const removedAiUsernames = [];
+            this.state.players = this.state.players.filter(p => {
+                if (!p.isHuman) {
+                    removedAiUsernames.push(p.username);
+                    // Also remove from chipBalances map
+                    if (this.state.chipBalances.has(p.username)) {
+                        this.state.chipBalances.delete(p.username);
+                    }
+                    return false; // Remove AI player
+                }
+                return true; // Keep human players
+            });
+
+            // Update DB table players
+            this.tableDb.players = this.tableDb.players.filter(p => {
+                if (!p.isHuman) {
+                    return false; // Remove AI player from DB
+                }
+                return true;
+            });
+            await this.tableDb.save();
+
+            // Broadcast that AI players have left
+            removedAiUsernames.forEach(username => {
+                this.broadcast("player_left", {
+                    sessionId: `ai-${username}`, // Use a consistent identifier for AI
+                    username: username,
+                    players: this.state.players.toJSON()
+                });
+            });
+
+            // Re-evaluate players after AI removal
+            const reEvaluatedActivePlayers = this.state.players.filter(p => p.status === 'active');
+            const reEvaluatedHumanPlayers = reEvaluatedActivePlayers.filter(p => p.isHuman);
+            const reEvaluatedAiPlayers = reEvaluatedActivePlayers.filter(p => !p.isHuman);
+
+            // If after removing AI, there's only one human, add AI back (this handles cases where AI was removed but then a human left)
+            if (reEvaluatedHumanPlayers.length === 1 && reEvaluatedAiPlayers.length === 0 && reEvaluatedActivePlayers.length < this.maxClients) {
+                console.log(`🤖 Re-adding AI companion for lone human at table ${this.tableDb._id} after AI removal`);
+                const aiPlayerName = `AI Player ${this.tableDb._id.toString().slice(-4)}`;
+                const newAiPlayer = new Player(aiPlayerName, 1000, false, `ai-${Date.now()}`);
+                this.state.players.push(newAiPlayer);
+                this.state.chipBalances.set(aiPlayerName, 1000);
+
+                // Update DB
+                this.tableDb.players.push({
+                    username: newAiPlayer.username,
+                    chips: newAiPlayer.chips,
+                    isHuman: newAiPlayer.isHuman,
+                    socketId: newAiPlayer.sessionId,
+                    joinedAt: new Date(),
+                    status: 'active'
+                });
+                await this.tableDb.save();
+
+                this.broadcast("player_joined", {
+                    username: newAiPlayer.username,
+                    players: this.state.players.toJSON()
+                });
+            }
+            // Re-check after AI removal/re-addition
+            this.checkAndStartGame();
+            return;
+        }
+
+        // Add AI if only 1 human and no AI present (original logic, now after AI removal check)
         if (humanPlayers.length === 1 && aiPlayers.length === 0 && activePlayers.length < this.maxClients) {
             console.log(`🤖 Adding AI companion for lone human at table ${this.tableDb._id}`);
             const aiPlayerName = `AI Player ${this.tableDb._id.toString().slice(-4)}`;
@@ -567,7 +683,7 @@ class GameRoom extends colyseus.Room {
 
         const finalActivePlayers = this.state.players.filter(p => p.status === 'active');
         const finalHumanPlayers = finalActivePlayers.filter(p => p.isHuman);
-        const finalAiPlayers = finalActivePlayers.filter(p => !p.isHuman);
+        // const finalAiPlayers = finalActivePlayers.filter(p => !p.isHuman); // No longer needed here as AI should be handled above
 
         const allHumansReady = finalHumanPlayers.every(p => this.state.readyPlayers.includes(p.username));
 

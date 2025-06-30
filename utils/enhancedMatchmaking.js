@@ -72,9 +72,6 @@ class EnhancedMatchmaking {
         }
       }
 
-      // ✅ After processing existing tables, check if we need to create new ones
-      await this.handleQueueOverflow();
-
       // Broadcast comprehensive lobby update
       const updatedTables = await Table.find();
       this.io.emit('tables_update', {
@@ -140,9 +137,9 @@ class EnhancedMatchmaking {
       await this.checkAndStartGame(table);
     }
 
-    // Priority 4: Remove excess AI when humans are available
-    if (humanCount >= 2 && aiCount > 1) {
-      await this.removeExcessAi(table);
+    // Priority 4: Remove all AI when 2 or more human players are present
+    if (humanCount >= 2 && aiCount > 0) {
+      await this.removeAllAi(table);
       tableModified = true;
     }
 
@@ -322,15 +319,15 @@ class EnhancedMatchmaking {
   }
 
   /**
-   * Remove excess AI players intelligently
+   * Remove all AI players intelligently
    */
-  async removeExcessAi(table) {
+  async removeAllAi(table) {
     const aiPlayers = table.players.filter(p => !p.isHuman);
-    const excessAI = aiPlayers.slice(1); // Keep one AI, remove others
     
-    table.players = table.players.filter(p => p.isHuman || aiPlayers.indexOf(p) === 0);
-    
-    console.log(`🧹 Removed ${excessAI.length} excess AI player(s) from table ${table._id}`);
+    if (aiPlayers.length > 0) {
+      table.players = table.players.filter(p => p.isHuman);
+      console.log(`🧹 Removed all ${aiPlayers.length} AI player(s) from table ${table._id}`);
+    }
   }
 
   /**
@@ -610,41 +607,14 @@ class EnhancedMatchmaking {
         // Create new table and assign first player
         const firstPlayer = queue.shift();
         if (firstPlayer) {
-          const newTable = new Table({
-            name: `$${stake} Table`,
-            stake: stake,
-            players: [{
-              username: firstPlayer.username,
-              chips: firstPlayer.chips,
-              isHuman: true,
-              socketId: firstPlayer.socketId,
-              joinedAt: new Date(),
-              status: 'active'
-            }],
-            status: 'waiting',
-            spectators: [],
-            readyPlayers: []
-          });
-          
-          await newTable.save();
-          
-          // Notify player of table assignment
-          this.io.to(firstPlayer.socketId).emit('table_assigned', {
-            tableId: newTable._id,
-            seat: 0,
-            stake: stake,
-            playerCount: 1,
-            message: `Joined $${stake} table`,
-            gameStatus: 'waiting',
-            canPlayImmediately: true
-          });
-          
-          console.log(`✅ ${firstPlayer.username} assigned to new $${stake} table ${newTable._id}`);
-          
-          // Add AI companion for immediate play
-          await this.addAiPlayer(newTable);
-          await this.checkAndStartGame(newTable);
-          await newTable.save();
+          // Instead of creating a new Table document directly,
+          // we'll rely on Colyseus's matchMaker.joinOrCreate to handle room creation.
+          // This part of the logic should ideally be handled by the Colyseus client
+          // attempting to join a room, and Colyseus will create it if it doesn't exist.
+          // For now, we'll remove this server-side table creation logic.
+          // The frontend will call colyseusClient.joinOrCreate('tonk_$stake', ...)
+          // and Colyseus will manage the room lifecycle.
+          console.log(`Skipping server-side table creation for stake $${stake}. Frontend should use Colyseus joinOrCreate.`);
         }
       }
     }

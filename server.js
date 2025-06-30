@@ -104,7 +104,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Internal Server Error' });
 });
 
-// Initialize preset tables
 const initializePresetTables = async () => {
   try {
       await Table.deleteMany({}); // Clear existing tables
@@ -120,8 +119,6 @@ const initializePresetTables = async () => {
       console.error('Error initializing preset tables:', error);
   }
 };
-
-
 
 // Start the HTTP server
 const PORT = process.env.PORT || 3000;
@@ -181,8 +178,9 @@ const colyseus = new Server({
   })
 });
 
-// Define Colyseus Rooms
-colyseus.define('game_room', GameRoom);
+// Define Colyseus Rooms dynamically based on stake
+// The ':stake' parameter allows clients to join rooms like 'tonk_1', 'tonk_5', etc.
+colyseus.define('tonk_:stake', GameRoom);
 
 // Start the Colyseus server
 colyseus.listen(PORT);
