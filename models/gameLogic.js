@@ -487,7 +487,51 @@ const processGameAction = (state, action, payload) => {
 
   console.log(`⚙️ processGameAction: After ${action} - gameOver: ${newState.gameOver}, winType: ${newState.winType}, winners: [${newState.winners?.join(',') || ''}]`);
 
+  // After any action that might end the game, check for AI departure conditions
+  if (newState.gameOver) {
+    handleAiDeparture(newState);
+  }
+
   return newState;
+};
+
+const handleAiDeparture = (gameState) => {
+  const humanPlayers = gameState.players.filter(p => p.isHuman);
+  const aiPlayers = gameState.players.filter(p => !p.isHuman);
+
+  // Condition 1: If there are 2 or more human players, AI leaves
+  if (humanPlayers.length >= 2 && aiPlayers.length > 0) {
+    console.log(`🤖 AI Departure: Game over with ${humanPlayers.length} human players. AI(s) will leave.`);
+    // Remove all AI players
+    gameState.players = gameState.players.filter(p => p.isHuman);
+    // Re-index playerHands and playerSpreads to match new player array
+    const newPlayerHands = [];
+    const newPlayerSpreads = [];
+    gameState.players.forEach(humanPlayer => {
+      const originalIndex = gameState.players.findIndex(p => p.username === humanPlayer.username);
+      if (originalIndex !== -1) {
+        newPlayerHands.push(gameState.playerHands[originalIndex]);
+        newPlayerSpreads.push(gameState.playerSpreads[originalIndex]);
+      }
+    });
+    gameState.playerHands = newPlayerHands;
+    gameState.playerSpreads = newPlayerSpreads;
+    // Reset currentTurn if the current player was an AI that left
+    if (!gameState.players[gameState.currentTurn]?.isHuman) {
+      gameState.currentTurn = 0; // Or find the next human player
+    }
+  }
+  // Condition 2: If there is only human vs AI at a table and the human leaves, the AI needs to leave as well
+  // This condition is typically handled by the player leaving logic, not game end.
+  // However, if a human player leaves and it results in only one human and one AI, and then the game ends,
+  // the above condition (humanPlayers.length >= 2) would not apply.
+  // This specific scenario (human leaves, then AI leaves if only human vs AI) needs to be handled
+  // where player disconnections are processed, likely in useWebSocket.js or gameActions.js.
+  // For now, I'll assume this function is called only when the game *ends*.
+  // If a human leaves mid-game, the game state would be updated elsewhere, and then if the game ends,
+  // the above logic would apply.
+
+  console.log(`🤖 AI Departure: After check - remaining players:`, gameState.players.map(p => p.username));
 };
 
 
