@@ -195,7 +195,7 @@ const isValidHit = (card, spread) => {
       }
 
       // If it's a suited sequence but doesn't form a valid standard or Ace-low sequence
-      console.log('isValidHit (backend): Invalid rank sequence for suited sequence hit', allValues);
+      console.log('isValidHit (backend): Invalid rank sequence for suited sequence hit', allRankIndices);
       return false;
 
   }
