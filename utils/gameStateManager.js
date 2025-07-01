@@ -546,7 +546,7 @@ class GameStateManager {
       }
 
       console.log(`🤖 GameStateManager: Before runAiTurn - currentTurn: ${table.gameState.currentTurn}, gameOver: ${table.gameState.gameOver}`);
-      const updatedState = runAiTurn(table.gameState);
+      const updatedState = await runAiTurn(table.gameState);
       console.log(`🤖 GameStateManager: After runAiTurn - currentTurn: ${updatedState.currentTurn}, gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}`);
 
       table.gameState = updatedState;
