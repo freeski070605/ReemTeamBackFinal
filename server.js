@@ -18,27 +18,57 @@ const app = express();
 
 
 // Configure CORS options
-const frontendOrigin = process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.replace(/\/$/, '') : 'https://reem-team-front-final.vercel.app';
+const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://reem-team-front-final.vercel.app';
+const unityFrontendOrigin = process.env.UNITY_FRONTEND_ORIGIN; // e.g., your new Vercel URL for the Unity build
+
 const allowedOrigins = [
   'http://localhost:3000',
-  frontendOrigin
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  frontendOrigin,
+  // Unity WebGL development origins
+  'null', // For file:// protocol in Unity WebGL
 ];
+
+if (unityFrontendOrigin) {
+  allowedOrigins.push(unityFrontendOrigin);
+}
+
+// Also allow any localhost origin for development
+const isDevelopment = process.env.NODE_ENV !== 'production';
+if (isDevelopment) {
+  // In development, allow any localhost origin
+  allowedOrigins.push(/http:\/\/localhost:\d+/);
+  allowedOrigins.push(/http:\/\/127\.0\.0\.1:\d+/);
+}
 
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps, curl requests, or Unity WebGL)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      console.error('CORS Error: Origin not allowed -', origin);
-      return callback(new Error(msg), false);
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return allowed === origin;
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    })) {
+      return callback(null, true);
     }
-    return callback(null, true);
+
+    const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+    console.error('CORS Error: Origin not allowed -', origin);
+    console.error('Allowed origins:', allowedOrigins);
+    return callback(new Error(msg), false);
   },
   credentials: true, // Allow credentials (cookies, HTTP authentication)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Explicitly allow common methods
-  allowedHeaders: ['Content-Type', 'Authorization'] // Explicitly allow common headers
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'] // Expanded headers
 };
 
 // Middleware
@@ -179,16 +209,37 @@ process.on('unhandledRejection', (reason, promise) => {
   // For production, consider logging to an external service
 });
 
-// Start the WebSocket server
+// Start the WebSocket server with enhanced CORS for Unity WebGL
 const io = require('socket.io')(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (Unity WebGL, mobile apps, etc.)
+      if (!origin) return callback(null, true);
+
+      // Check if origin is in allowed list
+      if (allowedOrigins.some(allowed => {
+        if (typeof allowed === 'string') {
+          return allowed === origin;
+        } else if (allowed instanceof RegExp) {
+          return allowed.test(origin);
+        }
+        return false;
+      })) {
+        return callback(null, true);
+      }
+
+      console.error('Socket.IO CORS Error: Origin not allowed -', origin);
+      return callback(new Error('Origin not allowed'), false);
+    },
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'] // Fix: Add Content-Type and Authorization
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
   },
   transports: ['websocket', 'polling'],
-  pingTimeout: 60000
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  allowEIO3: true, // Allow Engine.IO v3 for compatibility
+  maxHttpBufferSize: 1e8 // Increase buffer size for larger messages
 });
 
 // Import cleanup functions
