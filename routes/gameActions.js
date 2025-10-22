@@ -7,10 +7,30 @@ const GameStateManager = require('../utils/gameStateManager');
 const handleGameAction = async (io, socket, { tableId, action, payload }, gameStateManagerInstance) => {
     try {
         console.log(`🎯 handleGameAction: ${action} from socket ${socket.id} at table ${tableId}`);
-        
+
+        if (!tableId) {
+            socket.emit('error', { message: 'No table ID provided.' });
+            return;
+        }
+
         const table = await Table.findById(tableId);
-        if (!table || !table.gameState) {
+        if (!table) {
+            console.error(`Table ${tableId} not found in database`);
             socket.emit('error', { message: 'Table or game state not found.' });
+            return;
+        }
+
+        if (!table.gameState) {
+            console.error(`Table ${tableId} has no game state`);
+            socket.emit('error', { message: 'Table or game state not found.' });
+            return;
+        }
+
+        // Additional validation - check if player is actually at this table
+        const playerAtTable = table.players.find(p => p.socketId === socket.id);
+        if (!playerAtTable) {
+            console.error(`Socket ${socket.id} is not a player at table ${tableId}`);
+            socket.emit('error', { message: 'You are not a player at this table.' });
             return;
         }
 
@@ -23,8 +43,12 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
         }
 
         console.log(`🎯 handleGameAction: Before processing - gameOver: ${table.gameState.gameOver}`);
-        const updatedState = processGameAction(table.gameState, action, payload);
-        console.log(`🎯 handleGameAction: After processing - gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}, winners: [${updatedState.winners?.join(',') || ''}]`);
+
+        // Add a small delay to allow for reconnection to complete
+        setTimeout(() => {
+          const updatedState = processGameAction(table.gameState, action, payload);
+          console.log(`🎯 handleGameAction: After processing - gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}, winners: [${updatedState.winners?.join(',') || ''}]`);
+        }, 500);
 
         console.log(`📝 handleGameAction: About to assign updatedState with gameOver: ${updatedState.gameOver}`);
         table.gameState = updatedState;
