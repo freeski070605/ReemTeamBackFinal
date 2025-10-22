@@ -285,6 +285,16 @@ const handlePlayerReconnect = async ({ tableId, username, socketId, io = null })
     }
     
     if (player.status === 'disconnected') {
+      // Disconnect any existing sockets for this user at this table
+      if (io) {
+        for (const s of io.sockets.sockets.values()) {
+          if (s.userId === player.username && s.id !== socketId) {
+            console.log(`🔌 Disconnecting old socket ${s.id} for user ${username} at table ${tableId}`);
+            s.disconnect(true);
+          }
+        }
+      }
+
       // Reconnect the player
       player.status = 'active';
       player.socketId = socketId;
@@ -292,6 +302,15 @@ const handlePlayerReconnect = async ({ tableId, username, socketId, io = null })
       
       await saveTableWithRetry(table);
       
+      // Update socketId in gameState.players as well
+      if (table.gameState && table.gameState.players) {
+        const gameStatePlayerIndex = table.gameState.players.findIndex(p => p.username === username);
+        if (gameStatePlayerIndex !== -1) {
+          table.gameState.players[gameStatePlayerIndex].socketId = socketId;
+          console.log(`🎯 Updated gameState.players[${gameStatePlayerIndex}].socketId to ${socketId}`);
+        }
+      }
+
       console.log(`🔄 Player ${username} reconnected to table ${tableId} with new socket ID: ${socketId}`);
       
       if (io) {
