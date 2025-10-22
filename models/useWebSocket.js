@@ -255,6 +255,16 @@ socket.on('join_table', async ({ tableId, player }) => {
 
         // Get updated table state
         const table = await Table.findById(tableId);
+
+        // Verify that the socket ID is correctly associated with the player
+        const playerIndex = table.players.findIndex(p => p.username === player.username);
+        if (playerIndex !== -1 && table.gameState && table.gameState.players) {
+          const gameStatePlayerIndex = table.gameState.players.findIndex(p => p.username === player.username);
+          if (gameStatePlayerIndex !== -1) {
+            table.gameState.players[gameStatePlayerIndex].socketId = socket.id;
+            console.log(`✅ Verified and updated socket ID for ${player.username} in gameState`);
+          }
+        }
         
         // Send appropriate game state - always send current table state
         if (table.gameState && table.gameState.gameStarted && !table.gameState.gameOver) {
