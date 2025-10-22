@@ -105,7 +105,46 @@ const assignPlayersToTables = async (io) => {
 
 const jwt = require('jsonwebtoken');
 
+const playerTimeouts = {};
+
 const handleWebSocketConnection = (socket, io) => {
+
+  const resetInactivityTimeout = (socket, io) => {
+    if (playerTimeouts[socket.id]) {
+      clearTimeout(playerTimeouts[socket.id]);
+    }
+
+    playerTimeouts[socket.id] = setTimeout(async () => {
+      console.log(`Player ${socket.userId} (socket ${socket.id}) timed out due to inactivity.`);
+      
+      // Find the table and username associated with the socket
+      let playerUsername = null;
+      let playerTableId = null;
+      const tablesWithPlayer = await Table.find({ 'players.socketId': socket.id });
+      for (const table of tablesWithPlayer) {
+        const player = table.players.find(p => p.socketId === socket.id);
+        if (player) {
+          playerUsername = player.username;
+          playerTableId = table._id;
+          break;
+        }
+      }
+
+      if (playerUsername && playerTableId) {
+        await handlePlayerLeave({
+          tableId: playerTableId,
+          username: playerUsername,
+          io,
+          isDisconnect: true,
+          assignPlayersToTables
+        });
+      } else {
+        console.log(`Socket ${socket.id} was not found as an active player in any table.`);
+      }
+
+      delete playerTimeouts[socket.id]; // Clean up timeout
+    }, 30000); // 30 seconds
+  };
   // --- AUTHENTICATION MIDDLEWARE ---
   const { token, userId } = socket.handshake.query || {};
   const JWT_SECRET = process.env.JWT_SECRET || 'reemteamsecret';
@@ -132,6 +171,7 @@ const handleWebSocketConnection = (socket, io) => {
   }
 
   console.log('WebSocket connected with ID:', socket.id, 'for user:', userId);
+  resetInactivityTimeout(socket, io);
 
   // Initialize enhanced systems if not already done
   if (!enhancedMatchmaking) {
@@ -452,6 +492,7 @@ socket.on('join_table', async ({ tableId, player }) => {
 
   socket.on('game_action', (data) => {
       console.log(`🎯 WebSocket: Received game_action event:`, data);
+      resetInactivityTimeout(socket, io);
       handleGameAction(io, socket, data, gameStateManager); // Pass gameStateManager instance
   });
   
@@ -476,6 +517,11 @@ socket.on('join_table', async ({ tableId, player }) => {
   socket.on('disconnect', async (reason) => {
     try {
       console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
+
+      if (playerTimeouts[socket.id]) {
+        clearTimeout(playerTimeouts[socket.id]);
+        delete playerTimeouts[socket.id];
+      }
   
       let playerUsername = null;
       let playerTableId = null;
