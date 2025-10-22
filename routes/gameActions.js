@@ -36,6 +36,14 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
 
         const currentPlayer = table.gameState.players[table.gameState.currentTurn];
         console.log(`🎯 handleGameAction: Current player: ${currentPlayer.username} (socketId: ${currentPlayer.socketId}), Action from: ${socket.id}`);
+
+        // Ensure the socket ID in gameState is up-to-date
+        if (currentPlayer.socketId !== socket.id) {
+          console.warn(`⚠️ Socket ID mismatch detected - updating gameState.players[${table.gameState.currentTurn}].socketId from ${currentPlayer.socketId} to ${socket.id}`);
+          currentPlayer.socketId = socket.id;
+          table.gameState.players[table.gameState.currentTurn].socketId = socket.id;
+          await table.save();
+        }
         
         if (currentPlayer.socketId !== socket.id) {
             socket.emit('error', { message: 'Not your turn.' });
