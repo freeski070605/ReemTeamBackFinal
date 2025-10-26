@@ -1,13 +1,13 @@
 const { processGameAction } = require('../models/gameLogic');
 const { runAiTurn } = require('../models/AiPlayer');
 const { Table } = require('../models/Table');
-const User = require('../models/User'); // Import User model
+const User = require('./models/User'); // Import User model
 
 const GameStateManager = require('../utils/gameStateManager');
 const handleGameAction = async (io, socket, { tableId, action, payload }, gameStateManagerInstance) => {
     try {
         console.log(`🎯 handleGameAction: ${action} from socket ${socket.id} at table ${tableId}`);
-
+        console.log(`[SOCKET_DEBUG] Backend: Socket ID: ${socket.id}`);
         if (!tableId) {
             socket.emit('error', { message: 'No table ID provided.' });
             return;
@@ -58,7 +58,7 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
           console.log(`🎯 handleGameAction: After processing - gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}, winners: [${updatedState.winners?.join(',') || ''}]`);
         }, 500);
 
-        console.log(`📝 handleGameAction: About to assign updatedState with gameOver: ${updatedState.gameOver}`);
+        console.log(`📝 handleGameAction: About to assign updatedState with gameOver: ${table.gameState.gameOver}`);
         table.gameState = updatedState;
         await table.save();
         console.log(`💾 handleGameAction: State saved to database with gameOver: ${table.gameState.gameOver}`);
@@ -95,6 +95,7 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
                         gameResult = 'reem';
                     } else if (winType === 'DROP_WIN') {
                         earnings = pot; // Drop winner takes the whole pot
+                        gameResult = 'win';
                     } else if (winType === 'IMMEDIATE_50_WIN') {
                         earnings = pot * 2; // Immediate 50 win gets double payout
                         gameResult = 'win'; // Still a 'win' for stats
