@@ -45,7 +45,8 @@ class GameStateManager {
     } else {
       // No AI, add as spectator until next hand
       return this.addAsSpectatorUntilNextHand(table, newPlayer);
-    }
+    console.log(`[DEBUG] handleMidGameJoin: Adding ${newPlayer.username} as spectator until next hand at table ${table._id}`);
+   }
   }
 
   /**
@@ -237,6 +238,7 @@ class GameStateManager {
       // Check if hand is complete
       if (!table.gameState || table.gameState.gameOver || !table.gameState.gameStarted) {
         await this.completeTransition(transitionId, table);
+        console.log(`[DEBUG] checkPendingTransitions: Completing transition ${transitionId} for table ${table._id}`);
       }
     }
   }
@@ -472,13 +474,19 @@ class GameStateManager {
             console.log(`🚫 Cannot start new hand - game in progress at table ${tableId} (latest state)`);
             console.log(`🔍 Current game state: gameStarted: ${latestGameState?.gameStarted}, gameOver: ${latestGameState?.gameOver}`);
         }
-    }
-}
+        console.log(`[DEBUG] handlePlayerReady: All humans ready, checking game state before starting new hand:`, {
+          gameStarted: latestGameState?.gameStarted,
+          gameOver: latestGameState?.gameOver,
+          hasPendingTransition: hasPendingTransition
+        });
+      }
+  }
 
   /**
    * Start new hand with enhanced features
    */
   async startNewHand(table) {
+    console.log(`[DEBUG] startNewHand: Starting new hand at table ${table._id}`);
     console.log(`🎮 Starting new hand at table ${table._id}`);
 
     // ✅ Completely clear old game state before initializing new one
