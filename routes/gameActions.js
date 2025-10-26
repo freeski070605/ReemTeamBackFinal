@@ -1,7 +1,7 @@
 const { processGameAction } = require('../models/gameLogic');
 const { runAiTurn } = require('../models/AiPlayer');
 const { Table } = require('../models/Table');
-const User = require('./models/User'); // Import User model
+const User = require('../models/User'); // Import User model
 
 const GameStateManager = require('../utils/gameStateManager');
 const handleGameAction = async (io, socket, { tableId, action, payload }, gameStateManagerInstance) => {
@@ -151,3 +151,4 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
 module.exports = {
     handleGameAction
 };
+
