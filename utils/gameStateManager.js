@@ -44,8 +44,8 @@ class GameStateManager {
       return this.initiateAiToHumanTransition(table, newPlayer);
     } else {
       // No AI, add as spectator until next hand
+      console.log(`[DEBUG] handleMidGameJoin: Adding ${newPlayer.username} as spectator until next hand at table ${table._id}`);
       return this.addAsSpectatorUntilNextHand(table, newPlayer);
-    console.log(`[DEBUG] handleMidGameJoin: Adding ${newPlayer.username} as spectator until next hand at table ${table._id}`);
    }
   }
 
@@ -169,9 +169,11 @@ class GameStateManager {
    */
   async handleNormalJoin(table, newPlayer) {
     // Add player normally
+    const user = await User.findOne({ username: newPlayer.username });
+    const chips = user.chips;
     table.players.push({
       username: newPlayer.username,
-      chips: newPlayer.chips,
+      chips: chips,
       isHuman: true,
       socketId: newPlayer.socketId,
       joinedAt: new Date(),
@@ -378,7 +380,7 @@ class GameStateManager {
     const avgCardsPerPlayer = gameState.playerHands.reduce((sum, hand) => sum + hand.length, 0) / gameState.players.length;
     const estimatedTurns = avgCardsPerPlayer * gameState.players.length;
     const avgTurnTime = 15; // seconds per turn
-
+    
     return Math.round(estimatedTurns * avgTurnTime);
   }
 
@@ -743,8 +745,6 @@ class GameStateManager {
       readyPlayers: table.readyPlayers || []
     });
   }
-
-
 
 
   /**
