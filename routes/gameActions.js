@@ -1,7 +1,7 @@
 const { processGameAction } = require('../models/gameLogic');
 const { runAiTurn } = require('../models/AiPlayer');
 const { Table } = require('../models/Table');
-const User = require('../models/User'); // Import User model
+const User = require('../models/User');
 
 const GameStateManager = require('../utils/gameStateManager');
 const handleGameAction = async (io, socket, { tableId, action, payload }, gameStateManagerInstance) => {
@@ -26,12 +26,21 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
             return;
         }
 
-        // Additional validation - check if player is actually at this table
-        const playerAtTable = table.players.find(p => p.socketId === socket.id);
+        // Additional validation - check if player is actually at this table and update socket ID if needed
+        let playerAtTable = table.players.find(p => p.socketId === socket.id);
         if (!playerAtTable) {
-            console.error(`Socket ${socket.id} is not a player at table ${tableId}`);
-            socket.emit('error', { message: 'You are not a player at this table.' });
-            return;
+            // Check if any player at the table has the same username as the socket
+            const player = table.players.find(p => p.username === socket.userId);
+            if (player) {
+                console.log(`Updating socket ID for player ${player.username} from ${player.socketId} to ${socket.id}`);
+                player.socketId = socket.id;
+                playerAtTable = player; // Assign the found player to playerAtTable
+                await table.save();
+            } else {
+                console.error(`Socket ${socket.id} is not a player at table ${tableId}`);
+                socket.emit('error', { message: 'You are not a player at this table.' });
+                return;
+            }
         }
 
         const currentPlayer = table.gameState.players[table.gameState.currentTurn];
@@ -151,4 +160,3 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
 module.exports = {
     handleGameAction
 };
-
