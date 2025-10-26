@@ -102,7 +102,6 @@ const assignPlayersToTables = async (io) => {
 
 
 
-
 const jwt = require('jsonwebtoken');
 
 const playerTimeouts = {};
@@ -391,7 +390,6 @@ socket.on('join_table', async ({ tableId, player }) => {
     }
   });
   
-  
 
   // Add a leave_queue event
   socket.on('leave_queue', async (data) => {
@@ -470,7 +468,6 @@ socket.on('join_table', async ({ tableId, player }) => {
   
 
 
-
   socket.on('player_ready', async ({ tableId, username, autoReady = false }) => {
     console.log(`🔍 WebSocket: Received player_ready event for ${username} at table ${tableId} (autoReady: ${autoReady})`);
     try {
@@ -487,7 +484,6 @@ socket.on('join_table', async ({ tableId, player }) => {
       socket.emit('error', { message: 'An error occurred while getting ready.' });
     }
   });
-  
   
 
   socket.on('game_action', (data) => {
@@ -512,7 +508,6 @@ socket.on('join_table', async ({ tableId, player }) => {
     }
   });
   
-   
 
   socket.on('disconnect', async (reason) => {
     try {
@@ -553,7 +548,7 @@ socket.on('join_table', async ({ tableId, player }) => {
           tableId: playerTableId,
           username: playerUsername,
           io,
-          isDisconnect: true, // Indicate this is a disconnect, not a voluntary leave
+          isDisconnect: true, // Indicate this is a voluntary leave
           assignPlayersToTables
         });
       } else {
