@@ -12,6 +12,8 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
             socket.emit('error', { message: 'No table ID provided.' });
             return;
         }
+                console.log(`[SOCKET_DEBUG] Backend: Socket ID: ${socket.id}`);
+
 
         const table = await Table.findById(tableId);
         if (!table) {
@@ -160,3 +162,4 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
 module.exports = {
     handleGameAction
 };
+
