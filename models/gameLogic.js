@@ -434,6 +434,8 @@ const processGameAction = (state, action, payload) => {
     
             newState.hasDrawnCard = false;
             newState.currentTurn = (currentTurn + 1) % newState.players.length;
+        } else {
+            newState.currentTurn = (currentTurn + 1) % newState.players.length;
         }
         break;
 
