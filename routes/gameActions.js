@@ -8,11 +8,14 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
     try {
         console.log(`🎯 handleGameAction: ${action} from socket ${socket.id} at table ${tableId}`);
         console.log(`[SOCKET_DEBUG] Backend: Socket ID: ${socket.id}`);
+        console.log(`📨 GAME_ACTION RECEIVED: Action=${action}, Payload=${JSON.stringify(payload)}, Timestamp=${Date.now()}`);
+
         if (!tableId) {
             socket.emit('error', { message: 'No table ID provided.' });
             return;
         }
-                console.log(`[SOCKET_DEBUG] Backend: Socket ID: ${socket.id}`);
+
+        console.log(`[SOCKET_DEBUG] Backend: Socket ID: ${socket.id}`);
 
 
         const table = await Table.findById(tableId);
@@ -63,16 +66,28 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
 
         console.log(`🎯 handleGameAction: Before processing - gameOver: ${table.gameState.gameOver}`);
 
-        // Add a small delay to allow for reconnection to complete
-        setTimeout(() => {
-          const updatedState = processGameAction(table.gameState, action, payload);
-          console.log(`🎯 handleGameAction: After processing - gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}, winners: [${updatedState.winners?.join(',') || ''}]`);
-        }, 500);
+        // Process action synchronously with additional logging
+        console.log(`🔄 PROCESSING ACTION: ${action} with payload:`, JSON.stringify(payload));
+        const updatedState = processGameAction(table.gameState, action, payload);
+        console.log(`🎯 handleGameAction: After processing - gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}, winners: [${updatedState.winners?.join(',') || ''}]`);
+        console.log(`🔄 STATE_TRANSFORM: Action=${action}, Pre-gameOver=${table.gameState.gameOver}, Post-gameOver=${updatedState.gameOver}`);
 
-        console.log(`📝 handleGameAction: About to assign updatedState with gameOver: ${table.gameState.gameOver}`);
+        console.log(`📝 handleGameAction: About to assign updatedState with gameOver: ${updatedState.gameOver}`);
         table.gameState = updatedState;
+        // Additional logging for state consistency
+        console.log(`🔍 STATE_CONSISTENCY: Before save - gameState.gameOver: ${table.gameState.gameOver}, updatedState.gameOver: ${updatedState.gameOver}`);
+        console.log(`🔍 STATE_CONSISTENCY: Player hands lengths: ${table.gameState.playerHands?.map(h => h.length).join(',')}`);
+        console.log(`🔍 STATE_CONSISTENCY: Current turn: ${table.gameState.currentTurn}`);
+
         await table.save();
         console.log(`💾 handleGameAction: State saved to database with gameOver: ${table.gameState.gameOver}`);
+
+        // Verify state consistency before emitting
+        console.log(`🔍 EMIT_CONSISTENCY_CHECK: About to emit game_update`);
+        console.log(`🔍 EMIT_CONSISTENCY_CHECK: Emitted state - gameOver: ${updatedState.gameOver}, gameStarted: ${updatedState.gameStarted}, currentTurn: ${updatedState.currentTurn}`);
+        console.log(`🔍 EMIT_CONSISTENCY_CHECK: Emitted state - players: ${updatedState.players?.map(p => ({ username: p.username, isHuman: p.isHuman })).join(', ')}`);
+        console.log(`🔍 EMIT_CONSISTENCY_CHECK: Emitted state - playerHands lengths: ${updatedState.playerHands?.map(h => h.length).join(', ')}`);
+        console.log(`🔍 EMIT_CONSISTENCY_CHECK: Emitted state - playerSpreads lengths: ${updatedState.playerSpreads?.map(s => s.length).join(', ')}`);
 
         io.to(tableId).emit('game_update', updatedState);
         console.log(`📡 handleGameAction: Emitted game_update with gameOver: ${updatedState.gameOver}`);
@@ -162,4 +177,3 @@ const handleGameAction = async (io, socket, { tableId, action, payload }, gameSt
 module.exports = {
     handleGameAction
 };
-
