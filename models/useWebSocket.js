@@ -42,12 +42,12 @@ const broadcastGameState = (io, table) => {
   if (!table || !table.gameState) return;
 
   const updatedState = { ...table.gameState };
-  
+
   updatedState.isInitialized = true;
   updatedState.isLoading = false;
 
   console.log('Backend: Broadcasting game_update. Players:', updatedState.players?.map(p => ({ username: p?.username, isHuman: p?.isHuman })));
-
+  console.log(`📡 BROADCAST_CHECK: Broadcasting to table ${table._id} - gameOver: ${updatedState.gameOver}, gameStarted: ${updatedState.gameStarted}`);
 
   io.to(table._id).emit('game_update', table.gameState);
 };
@@ -404,17 +404,36 @@ socket.on('join_table', async ({ tableId, player }) => {
   });
   
 
+  // Track state sync requests for debugging frequent sync issues
+  const stateSyncTracker = new Map();
+
   socket.on('request_state_sync', async ({ tableId }) => {
     try {
+      // Check socket connection status
+      const isConnected = socket.connected;
+      const isInRoom = socket.rooms.has(tableId);
+      console.log(`🔌 SOCKET_STATUS: Socket ${socket.id} connected: ${isConnected}, in room ${tableId}: ${isInRoom}`);
+
       const table = await Table.findById(tableId);
       if (!table) {
+        console.log(`❌ STATE_SYNC_ERROR: Table ${tableId} not found for socket ${socket.id}`);
         socket.emit('error', { message: 'Table not found' });
         return;
       }
 
+      // Track sync frequency
+      const now = Date.now();
+      const key = `${socket.id}-${tableId}`;
+      const lastSync = stateSyncTracker.get(key);
+      const timeDiff = lastSync ? now - lastSync.timestamp : null;
+      const requestCount = lastSync ? lastSync.count + 1 : 1;
+
+      stateSyncTracker.set(key, { timestamp: now, count: requestCount });
+
+      console.log(`📊 STATE_SYNC TRACK: Table ${tableId}, Socket ${socket.id}, Request #${requestCount}, Time since last: ${timeDiff ? timeDiff + 'ms' : 'N/A'}`);
       console.log('Backend: State sync requested for table:', tableId);
       console.log('Backend: Table players:', table.players?.map(p => ({ username: p?.username, isHuman: p?.isHuman })));
-      
+
       if (table.gameState) {
         console.log('🔍 STATE_SYNC: Database game state details:', {
           gameStarted: table.gameState.gameStarted,
@@ -425,10 +444,19 @@ socket.on('join_table', async ({ tableId, player }) => {
           currentTurn: table.gameState.currentTurn
         });
         console.log('Backend: Emitting game state. Players:', table.gameState.players?.map(p => ({ username: p?.username, isHuman: p?.isHuman })));
-        socket.emit('state_sync', table.gameState);
+
+        // Emit with callback to confirm delivery
+        socket.emit('state_sync', table.gameState, (ack) => {
+          if (ack) {
+            console.log(`✅ STATE_SYNC_ACK: Socket ${socket.id} acknowledged state sync for table ${tableId}`);
+          } else {
+            console.log(`⚠️ STATE_SYNC_NO_ACK: Socket ${socket.id} did not acknowledge state sync for table ${tableId}`);
+          }
+        });
       } else {
         console.log('Backend: Emitting waiting state with players:', table.players?.map(p => ({ username: p?.username, isHuman: p?.isHuman })));
-        socket.emit('state_sync', {
+
+        const waitingState = {
           players: table.players,
           stake: table.stake,
           message: 'Waiting for players to be ready...',
@@ -443,7 +471,22 @@ socket.on('join_table', async ({ tableId, player }) => {
           isInitialized: true,
           isLoading: false,
           timestamp: Date.now()
+        };
+
+        socket.emit('state_sync', waitingState, (ack) => {
+          if (ack) {
+            console.log(`✅ WAITING_STATE_ACK: Socket ${socket.id} acknowledged waiting state for table ${tableId}`);
+          } else {
+            console.log(`⚠️ WAITING_STATE_NO_ACK: Socket ${socket.id} did not acknowledge waiting state for table ${tableId}`);
+          }
         });
+      }
+
+      // Clean up old entries (older than 5 minutes)
+      for (const [k, v] of stateSyncTracker.entries()) {
+        if (now - v.timestamp > 300000) {
+          stateSyncTracker.delete(k);
+        }
       }
     } catch (error) {
       console.error('Error syncing state:', error);
