@@ -414,6 +414,13 @@ socket.on('join_table', async ({ tableId, player }) => {
       const isInRoom = socket.rooms.has(tableId);
       console.log(`🔌 SOCKET_STATUS: Socket ${socket.id} connected: ${isConnected}, in room ${tableId}: ${isInRoom}`);
 
+      // CRITICAL FIX: Ensure socket is in the table room for broadcasts
+      if (!isInRoom) {
+        console.log(`🔧 JOINING_ROOM: Socket ${socket.id} not in room ${tableId}, joining now...`);
+        socket.join(tableId);
+        console.log(`✅ ROOM_JOINED: Socket ${socket.id} successfully joined room ${tableId}`);
+      }
+
       const table = await Table.findById(tableId);
       if (!table) {
         console.log(`❌ STATE_SYNC_ERROR: Table ${tableId} not found for socket ${socket.id}`);
