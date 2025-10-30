@@ -115,7 +115,7 @@ const handleWebSocketConnection = (socket, io) => {
 
     playerTimeouts[socket.id] = setTimeout(async () => {
       console.log(`Player ${socket.userId} (socket ${socket.id}) timed out due to inactivity.`);
-      
+
       // Find the table and username associated with the socket
       let playerUsername = null;
       let playerTableId = null;
@@ -144,6 +144,22 @@ const handleWebSocketConnection = (socket, io) => {
       delete playerTimeouts[socket.id]; // Clean up timeout
     }, 30000); // 30 seconds
   };
+
+  // CRITICAL FIX: Prevent multiple socket connections from same user
+  const existingSockets = Array.from(io.sockets.sockets.values()).filter(s =>
+    s !== socket && s.userId === socket.userId
+  );
+
+  if (existingSockets.length > 0) {
+    console.log(`🚫 Multiple connections detected for user ${socket.userId}. Disconnecting older sockets.`);
+
+    // Disconnect older sockets for this user
+    existingSockets.forEach(oldSocket => {
+      console.log(`🔌 Force disconnecting duplicate socket ${oldSocket.id} for user ${socket.userId}`);
+      oldSocket.emit('force_disconnect', { reason: 'Another connection from this user detected' });
+      oldSocket.disconnect(true);
+    });
+  }
   // --- AUTHENTICATION MIDDLEWARE ---
   const { token, userId } = socket.handshake.query || {};
   const JWT_SECRET = process.env.JWT_SECRET || 'reemteamsecret';
@@ -428,10 +444,16 @@ socket.on('join_table', async ({ tableId, player }) => {
         return;
       }
 
-      // Track sync frequency
+      // Track sync frequency and prevent spam - limit to 1 request per second per socket
       const now = Date.now();
       const key = `${socket.id}-${tableId}`;
       const lastSync = stateSyncTracker.get(key);
+
+      if (lastSync && now - lastSync.timestamp < 1000) {
+        console.log(`🚫 STATE_SYNC_THROTTLED: Socket ${socket.id} requesting too frequently (${now - lastSync.timestamp}ms since last request)`);
+        return;
+      }
+
       const timeDiff = lastSync ? now - lastSync.timestamp : null;
       const requestCount = lastSync ? lastSync.count + 1 : 1;
 
