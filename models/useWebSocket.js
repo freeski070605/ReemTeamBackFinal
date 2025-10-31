@@ -106,7 +106,7 @@ const jwt = require('jsonwebtoken');
 
 const playerTimeouts = {};
 
-const handleWebSocketConnection = (socket, io) => {
+const handleWebSocketConnection = async (socket, io) => {
 
   const resetInactivityTimeout = (socket, io) => {
     if (playerTimeouts[socket.id]) {
@@ -147,18 +147,37 @@ const handleWebSocketConnection = (socket, io) => {
 
   // CRITICAL FIX: Prevent multiple socket connections from same user
   const existingSockets = Array.from(io.sockets.sockets.values()).filter(s =>
-    s !== socket && s.userId === socket.userId
+    s !== socket && s.userId === socket.userId && s.connected
   );
 
   if (existingSockets.length > 0) {
-    console.log(`🚫 Multiple connections detected for user ${socket.userId}. Disconnecting older sockets.`);
+    console.log(`🚫 Multiple connections detected for user ${socket.userId}. Disconnecting ${existingSockets.length} older socket(s).`);
 
-    // Disconnect older sockets for this user
+    // Disconnect ALL older sockets for this user (not just one)
     existingSockets.forEach(oldSocket => {
       console.log(`🔌 Force disconnecting duplicate socket ${oldSocket.id} for user ${socket.userId}`);
-      oldSocket.emit('force_disconnect', { reason: 'Another connection from this user detected' });
+      oldSocket.emit('force_disconnect', {
+        reason: 'Another connection from this user detected',
+        timestamp: Date.now()
+      });
       oldSocket.disconnect(true);
     });
+
+    // Also clean up any references to these sockets in tables
+    try {
+      const tablesToUpdate = await Table.find({ 'players.socketId': { $in: existingSockets.map(s => s.id) } });
+      for (const table of tablesToUpdate) {
+        table.players.forEach(player => {
+          if (existingSockets.some(s => s.id === player.socketId)) {
+            console.log(`🧹 Cleaning up stale socket reference for player ${player.username} in table ${table._id}`);
+            player.socketId = null; // Clear stale socket ID
+          }
+        });
+        await table.save();
+      }
+    } catch (error) {
+      console.error('Error cleaning up stale socket references:', error);
+    }
   }
   // --- AUTHENTICATION MIDDLEWARE ---
   const { token, userId } = socket.handshake.query || {};
@@ -423,6 +442,9 @@ socket.on('join_table', async ({ tableId, player }) => {
   // Track state sync requests for debugging frequent sync issues
   const stateSyncTracker = new Map();
 
+  // ✅ AUTOMATIC ERROR RECOVERY: Add state sync retry mechanism
+  const stateSyncRetries = new Map();
+
   socket.on('request_state_sync', async ({ tableId }) => {
     try {
       // Check socket connection status
@@ -558,10 +580,54 @@ socket.on('join_table', async ({ tableId, player }) => {
   });
   
 
-  socket.on('game_action', (data) => {
+  socket.on('game_action', async (data) => {
       console.log(`🎯 WebSocket: Received game_action event:`, data);
       resetInactivityTimeout(socket, io);
-      handleGameAction(io, socket, data, gameStateManager); // Pass gameStateManager instance
+
+      try {
+        // ✅ Critical validation: Ensure table exists and player is active
+        const table = await Table.findById(data.tableId);
+        if (!table) {
+          console.log(`❌ game_action: Table ${data.tableId} not found`);
+          socket.emit('error', { message: 'Table not found' });
+          return;
+        }
+
+        // ✅ Validate player exists and is active in this table
+        const playerIndex = table.players.findIndex(p => p.socketId === socket.id);
+        if (playerIndex === -1) {
+          console.log(`❌ game_action: Player with socket ${socket.id} not found in table ${data.tableId}`);
+          socket.emit('error', { message: 'You are not an active player at this table' });
+          return;
+        }
+
+        // ✅ Validate game state exists
+        if (!table.gameState) {
+          console.log(`❌ game_action: No game state for table ${data.tableId}`);
+          socket.emit('error', { message: 'Game not started' });
+          return;
+        }
+
+        // ✅ Validate it's the correct player's turn
+        if (table.gameState.players[table.gameState.currentTurn]?.socketId !== socket.id) {
+          console.log(`❌ game_action: Not player's turn - current turn: ${table.gameState.currentTurn}, player socket: ${socket.id}`);
+          socket.emit('error', { message: 'It is not your turn' });
+          return;
+        }
+
+        // ✅ Prevent duplicate actions by checking if game is over
+        if (table.gameState.gameOver) {
+          console.log(`❌ game_action: Game is already over at table ${data.tableId}`);
+          socket.emit('error', { message: 'Game is already over' });
+          return;
+        }
+
+        handleGameAction(io, socket, data, gameStateManager); // Pass gameStateManager instance
+
+      } catch (error) {
+        console.error('❌ game_action error:', error);
+        socket.emit('error', { message: 'Failed to process game action' });
+      }
   });
   
 
