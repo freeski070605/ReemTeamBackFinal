@@ -142,7 +142,7 @@ const handleWebSocketConnection = async (socket, io) => {
       }
 
       delete playerTimeouts[socket.id]; // Clean up timeout
-    }, 30000); // 30 seconds
+    }, 300000); // 5 minutes (increased from 30 seconds)
   };
 
   // CRITICAL FIX: Prevent multiple socket connections from same user
@@ -246,35 +246,37 @@ const handleWebSocketConnection = async (socket, io) => {
   });
 
  // Improved join queue handler
-socket.on('join_queue', async (data) => {
-    console.log('Join queue request:', data);
-    try {
-        const { stake, player } = data;
-        const playerData = {
-            username: player.username,
-            chips: player.chips,
-            isHuman: true,
-            socketId: socket.id,
-            joinedAt: new Date()
-        };
-        addToQueue(stake, playerData); // Use the new queue manager
-        const queues = getQueues();
-        const queue = queues.get(stake);
-        const position = queue.findIndex(p => p.username === player.username) + 1;
-        socket.emit('queue_status', {
-            stake,
-            position,
-            queueSize: queue.length,
-            estimatedWait: Math.max(0, (position - 1) * 10)
-        });
-        setImmediate(() => assignPlayersToTables(io));
-    } catch (error) {
-        console.error('Error joining queue:', error);
-        socket.emit('error', { message: 'Failed to join queue' });
-    }
+ socket.on('join_queue', async (data) => {
+     console.log('Join queue request:', data);
+     resetInactivityTimeout(socket, io);
+     try {
+         const { stake, player } = data;
+         const playerData = {
+             username: player.username,
+             chips: player.chips,
+             isHuman: true,
+             socketId: socket.id,
+             joinedAt: new Date()
+         };
+         addToQueue(stake, playerData); // Use the new queue manager
+         const queues = getQueues();
+         const queue = queues.get(stake);
+         const position = queue.findIndex(p => p.username === player.username) + 1;
+         socket.emit('queue_status', {
+             stake,
+             position,
+             queueSize: queue.length,
+             estimatedWait: Math.max(0, (position - 1) * 10)
+         });
+         setImmediate(() => assignPlayersToTables(io));
+     } catch (error) {
+         console.error('Error joining queue:', error);
+         socket.emit('error', { message: 'Failed to join queue' });
+     }
 });
 
 socket.on('join_table', async ({ tableId, player }) => {
+    resetInactivityTimeout(socket, io);
     try {
         // Check if player is already at this table to prevent duplicates
         const existingTable = await Table.findById(tableId);
@@ -384,6 +386,7 @@ socket.on('join_table', async ({ tableId, player }) => {
   
 
   socket.on('join_spectator', async ({ tableId }) => {
+    resetInactivityTimeout(socket, io);
     const table = await Table.findById(tableId);
     if (!table) return;
   
@@ -428,8 +431,9 @@ socket.on('join_table', async ({ tableId, player }) => {
 
   // Add a leave_queue event
   socket.on('leave_queue', async (data) => {
-      console.log('Leave queue request:', data);
-      try {
+        console.log('Leave queue request:', data);
+        resetInactivityTimeout(socket, io);
+        try {
           const { stake, username } = data;
           removeFromQueue(stake, username); // Use the new queue manager
       } catch (error) {
@@ -446,6 +450,7 @@ socket.on('join_table', async ({ tableId, player }) => {
   const stateSyncRetries = new Map();
 
   socket.on('request_state_sync', async ({ tableId }) => {
+    resetInactivityTimeout(socket, io);
     try {
       // Check socket connection status
       const isConnected = socket.connected;
@@ -546,7 +551,8 @@ socket.on('join_table', async ({ tableId, player }) => {
   });
 
   socket.on('verify_state', async ({ tableId, stateHash }) => {
-    try {
+      resetInactivityTimeout(socket, io);
+      try {
       const table = await Table.findById(tableId);
       if (!table || !table.gameState) return;
   
@@ -564,6 +570,7 @@ socket.on('join_table', async ({ tableId, player }) => {
 
   socket.on('player_ready', async ({ tableId, username, autoReady = false }) => {
     console.log(`🔍 WebSocket: Received player_ready event for ${username} at table ${tableId} (autoReady: ${autoReady})`);
+    resetInactivityTimeout(socket, io);
     try {
       // Use enhanced game state manager for ready-up handling
       console.log(`🔍 WebSocket: Calling gameStateManager.handlePlayerReady for ${username}`);
@@ -632,7 +639,8 @@ socket.on('join_table', async ({ tableId, player }) => {
   
 
   socket.on('leave_table', async ({ tableId, username }) => {
-    try {
+      resetInactivityTimeout(socket, io);
+      try {
       await handlePlayerLeave({
         tableId,
         username,
@@ -709,6 +717,7 @@ socket.on('join_table', async ({ tableId, player }) => {
 
   socket.on('pong', () => {
     // Client is still connected
+    resetInactivityTimeout(socket, io);
   });
 
   socket.on('error', (error) => {
@@ -717,7 +726,8 @@ socket.on('join_table', async ({ tableId, player }) => {
 
   // Add reconnection handler
   socket.on('reconnect_player', async ({ tableId, username }) => {
-    try {
+     resetInactivityTimeout(socket, io);
+     try {
       const result = await handlePlayerReconnect({
         tableId,
         username,
