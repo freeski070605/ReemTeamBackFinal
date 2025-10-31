@@ -385,6 +385,112 @@ class GameStateManager {
   }
 
   /**
+   * Enhanced state reconciliation system
+   */
+  async reconcileGameState(tableId, clientState, clientHash) {
+    try {
+      const table = await Table.findById(tableId);
+      if (!table || !table.gameState) {
+        console.log(`❌ State reconciliation: Table ${tableId} not found or no game state`);
+        return { reconciled: false, reason: 'Table or game state not found' };
+      }
+
+      const serverState = table.gameState;
+      const serverHash = this.calculateStateHash(serverState);
+
+      // Check if states match
+      if (serverHash === clientHash) {
+        console.log(`✅ State reconciliation: States match for table ${tableId}`);
+        return { reconciled: true, state: serverState };
+      }
+
+      console.log(`⚠️ State reconciliation: Mismatch detected for table ${tableId}`);
+      console.log(`Server hash: ${serverHash}, Client hash: ${clientHash}`);
+
+      // Perform detailed comparison and reconciliation
+      const differences = this.compareGameStates(serverState, clientState);
+
+      if (differences.length === 0) {
+        console.log(`✅ State reconciliation: No significant differences found`);
+        return { reconciled: true, state: serverState };
+      }
+
+      console.log(`🔄 State reconciliation: Found ${differences.length} differences, applying server state`);
+
+      // Notify client of reconciliation
+      this.io.to(tableId).emit('state_reconciled', {
+        serverState: serverState,
+        differences: differences,
+        timestamp: Date.now()
+      });
+
+      return { reconciled: true, state: serverState, reconciled: true };
+
+    } catch (error) {
+      console.error('❌ State reconciliation error:', error);
+      return { reconciled: false, reason: error.message };
+    }
+  }
+
+  /**
+   * Compare two game states and identify differences
+   */
+  compareGameStates(serverState, clientState) {
+    const differences = [];
+
+    // Compare basic properties
+    const propertiesToCompare = [
+      'currentTurn', 'gameOver', 'gameStarted', 'hasDrawnCard',
+      'pot', 'stake', 'isInitialized', 'isLoading'
+    ];
+
+    propertiesToCompare.forEach(prop => {
+      if (serverState[prop] !== clientState[prop]) {
+        differences.push({
+          property: prop,
+          server: serverState[prop],
+          client: clientState[prop]
+        });
+      }
+    });
+
+    // Compare player counts
+    if (serverState.players?.length !== clientState.players?.length) {
+      differences.push({
+        property: 'playerCount',
+        server: serverState.players?.length || 0,
+        client: clientState.players?.length || 0
+      });
+    }
+
+    // Compare hand sizes
+    if (serverState.playerHands && clientState.playerHands) {
+      for (let i = 0; i < Math.max(serverState.playerHands.length, clientState.playerHands.length); i++) {
+        const serverHand = serverState.playerHands[i] || [];
+        const clientHand = clientState.playerHands[i] || [];
+
+        if (serverHand.length !== clientHand.length) {
+          differences.push({
+            property: `playerHand_${i}_length`,
+            server: serverHand.length,
+            client: clientHand.length
+          });
+        }
+      }
+    }
+
+    return differences;
+  }
+
+  /**
+   * Calculate state hash for comparison
+   */
+  calculateStateHash(state) {
+    const normalized = JSON.stringify(state, Object.keys(state).sort());
+    return require('crypto').createHash('sha256').update(normalized).digest('hex');
+  }
+
+  /**
    * Create enhanced ready-up system
    */
   async handlePlayerReady(tableId, username, options = {}) {
