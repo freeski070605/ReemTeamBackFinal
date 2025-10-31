@@ -285,18 +285,29 @@ const initializeGameState = (table) => {
 };
 
 const processGameAction = (state, action, payload) => {
-  const newState = { ...state };
-  const currentTurn = newState.currentTurn;
-  const playerHand = newState.playerHands?.[currentTurn] || [];
+   const newState = { ...state };
+   const currentTurn = newState.currentTurn;
+   const playerHand = newState.playerHands?.[currentTurn] || [];
 
-  console.log(`⚙️ processGameAction: Processing ${action} for player ${newState.players[currentTurn].username} (turn ${currentTurn})`);
-  console.log(`⚙️ processGameAction: Before action - gameOver: ${newState.gameOver}, hand size: ${playerHand.length}`);
-  
-  // ✅ Ensure playerSpreads is always properly initialized
-  if (!newState.playerSpreads || !Array.isArray(newState.playerSpreads)) {
-    console.log(`⚙️ processGameAction: Initializing playerSpreads array`);
-    newState.playerSpreads = Array.from({ length: newState.players.length }, () => []);
-  }
+   console.log(`⚙️ processGameAction: Processing ${action} for player ${newState.players[currentTurn]?.username || 'unknown'} (turn ${currentTurn})`);
+   console.log(`⚙️ processGameAction: Before action - gameOver: ${newState.gameOver}, hand size: ${playerHand.length}`);
+
+   // ✅ Critical turn validation - ensure game isn't over and player exists
+   if (newState.gameOver) {
+     console.log(`⚙️ processGameAction: Game is already over - rejecting action ${action}`);
+     return newState;
+   }
+
+   if (!newState.players || !newState.players[currentTurn]) {
+     console.log(`⚙️ processGameAction: Invalid current turn ${currentTurn} - players array issue`);
+     return newState;
+   }
+
+   // ✅ Ensure playerSpreads is always properly initialized
+   if (!newState.playerSpreads || !Array.isArray(newState.playerSpreads)) {
+     console.log(`⚙️ processGameAction: Initializing playerSpreads array`);
+     newState.playerSpreads = Array.from({ length: newState.players.length }, () => []);
+   }
 
   switch (action) {
     case 'DRAW_CARD':
@@ -416,28 +427,53 @@ const processGameAction = (state, action, payload) => {
         break;
 
     case 'HIT':
-        const { cardIndex, targetIndex, spreadIndex } = payload;
-        const cardToHit = newState.playerHands[currentTurn][cardIndex];
-        const targetSpread = newState.playerSpreads?.[targetIndex]?.[spreadIndex];
-    
-        if (isValidHit(cardToHit, targetSpread)) {
-            newState.playerHands[currentTurn].splice(cardIndex, 1);
-            newState.playerSpreads[targetIndex][spreadIndex].push(cardToHit);
-    
-            // Apply penalty
-            const targetPlayer = newState.players[targetIndex];
-            if (!targetPlayer.hitCount) {
-                targetPlayer.hitCount = 0;
-            }
-            targetPlayer.hitCount++;
-            targetPlayer.hitPenaltyRounds = (targetPlayer.hitCount === 1) ? 2 : 1;
-    
-            newState.hasDrawnCard = false;
-            newState.currentTurn = (currentTurn + 1) % newState.players.length;
-        } else {
-            newState.currentTurn = (currentTurn + 1) % newState.players.length;
-        }
+      console.log(`HIT: Processing hit from player ${currentTurn} (${newState.players[currentTurn].username})`);
+
+      // ✅ Validate it's the player's turn
+      if (newState.hasDrawnCard === false) {
+        console.log(`HIT: Invalid - player must draw a card before hitting`);
         break;
+      }
+
+      const { cardIndex, targetIndex, spreadIndex } = payload;
+      if (cardIndex === undefined || targetIndex === undefined || spreadIndex === undefined) {
+        console.log(`HIT: Invalid payload - missing required indices`);
+        break;
+      }
+
+      const cardToHit = newState.playerHands[currentTurn]?.[cardIndex];
+      if (!cardToHit) {
+        console.log(`HIT: Invalid card index ${cardIndex}`);
+        break;
+      }
+
+      const targetSpread = newState.playerSpreads?.[targetIndex]?.[spreadIndex];
+      if (!targetSpread || targetSpread.length < 3) {
+        console.log(`HIT: Invalid target spread at ${targetIndex}, ${spreadIndex}`);
+        break;
+      }
+
+      if (isValidHit(cardToHit, targetSpread)) {
+          newState.playerHands[currentTurn].splice(cardIndex, 1);
+          newState.playerSpreads[targetIndex][spreadIndex].push(cardToHit);
+
+          // Apply penalty
+          const targetPlayer = newState.players[targetIndex];
+          if (!targetPlayer.hitCount) {
+              targetPlayer.hitCount = 0;
+          }
+          targetPlayer.hitCount++;
+          targetPlayer.hitPenaltyRounds = (targetPlayer.hitCount === 1) ? 2 : 1;
+
+          console.log(`HIT: Valid hit - ${cardToHit.rank}${cardToHit.suit} added to ${newState.players[targetIndex].username}'s spread`);
+
+          newState.hasDrawnCard = false;
+          newState.currentTurn = (currentTurn + 1) % newState.players.length;
+      } else {
+          console.log(`HIT: Invalid hit attempt - advancing turn anyway`);
+          newState.currentTurn = (currentTurn + 1) % newState.players.length;
+      }
+      break;
 
 
       case 'DROP':
