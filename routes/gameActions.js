@@ -4,11 +4,37 @@ const { Table } = require('../models/Table');
 const User = require('../models/User');
 
 const GameStateManager = require('../utils/gameStateManager');
-const handleGameAction = async (io, socket, { tableId, action, payload }, gameStateManagerInstance) => {
+const handleGameAction = async (io, socket, { tableId, action, payload, clientStateHash }, gameStateManagerInstance) => {
     try {
         console.log(`🎯 handleGameAction: ${action} from socket ${socket.id} at table ${tableId}`);
         console.log(`[SOCKET_DEBUG] Backend: Socket ID: ${socket.id}`);
         console.log(`📨 GAME_ACTION RECEIVED: Action=${action}, Payload=${JSON.stringify(payload)}, Timestamp=${Date.now()}`);
+
+        // ✅ DESYNC DETECTION: Check client state hash against server state
+        if (clientStateHash) {
+            const table = await Table.findById(tableId);
+            if (table && table.gameState) {
+                const serverHash = gameStateManagerInstance.calculateStateHash(table.gameState);
+
+                if (serverHash !== clientStateHash) {
+                    console.log(`⚠️ DESYNC DETECTED: Client hash ${clientStateHash} != Server hash ${serverHash} for table ${tableId}`);
+
+                    // Trigger state reconciliation
+                    const reconciliationResult = await gameStateManagerInstance.reconcileGameState(tableId, null, clientStateHash);
+
+                    if (!reconciliationResult.reconciled) {
+                        socket.emit('error', { message: 'State desynchronization detected. Please refresh your game.' });
+                        return;
+                    }
+
+                    // Send reconciled state to client
+                    socket.emit('state_reconciled', {
+                        serverState: reconciliationResult.state,
+                        message: 'Game state synchronized with server'
+                    });
+                }
+            }
+        }
 
         if (!tableId) {
             socket.emit('error', { message: 'No table ID provided.' });
