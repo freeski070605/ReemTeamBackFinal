@@ -126,24 +126,27 @@ const handleGameAction = async (io, socket, { tableId, action, payload, clientSt
         // ✅ CRITICAL FIX: Add turn validation before processing action
         const turnValidation = validateTurnAction(table.gameState, socket.id, action);
         if (!turnValidation.valid) {
-            console.log(`🚫 TURN_VALIDATION_FAILED: ${turnValidation.reason} for action ${action}`);
-            socket.emit('turn_validation_error', {
-                errorMessage: turnValidation.reason,
-                errorType: 'TURN_VALIDATION_FAILED',
-                suggestedAction: 'Please wait for your turn or refresh the game state',
-                action: action,
-                timestamp: Date.now()
-            });
-
-            // Send Unity-specific validation error
-            io.to(tableId).emit('unity_turn_validation_error', {
-                errorMessage: turnValidation.reason,
-                errorType: 'TURN_VALIDATION_FAILED',
-                playerUsername: currentPlayer.username,
-                action: action
-            });
-
-            return;
+          console.log(`🚫 TURN_VALIDATION_FAILED: ${turnValidation.reason} for action ${action}`);
+          console.log(`🔍 TURN_VALIDATION_DEBUG: Current state - Turn: ${table.gameState.currentTurn}, GameOver: ${table.gameState.gameOver}, HasDrawnCard: ${table.gameState.hasDrawnCard}`);
+          console.log(`🔍 TURN_VALIDATION_DEBUG: Current player: ${currentPlayer?.username} (socket: ${currentPlayer?.socketId}), Requesting socket: ${socket.id}`);
+    
+          socket.emit('turn_validation_error', {
+            errorMessage: turnValidation.reason,
+            errorType: 'TURN_VALIDATION_FAILED',
+            suggestedAction: 'Please wait for your turn or refresh the game state',
+            action: action,
+            timestamp: Date.now()
+          });
+    
+          // Send Unity-specific validation error
+          io.to(tableId).emit('unity_turn_validation_error', {
+            errorMessage: turnValidation.reason,
+            errorType: 'TURN_VALIDATION_FAILED',
+            playerUsername: currentPlayer.username,
+            action: action
+          });
+    
+          return;
         }
 
         // Process action synchronously with additional logging
