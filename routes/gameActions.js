@@ -4,6 +4,37 @@ const { Table } = require('../models/Table');
 const User = require('../models/User');
 
 const GameStateManager = require('../utils/gameStateManager');
+
+// ✅ TURN VALIDATION HELPER: Check if current player can act
+const validateTurnAction = (gameState, socketId, action) => {
+    // Check if game is active
+    if (!gameState || gameState.gameOver) {
+        console.log(`🚫 TURN_VALIDATION: Game over or not started - rejecting action ${action}`);
+        return { valid: false, reason: 'Game not active' };
+    }
+
+    // Check turn ownership
+    const currentPlayer = gameState.players[gameState.currentTurn];
+    if (!currentPlayer || currentPlayer.socketId !== socketId) {
+        console.log(`🚫 TURN_VALIDATION: Not player's turn - current: ${currentPlayer?.username}, socket: ${socketId}`);
+        return { valid: false, reason: 'Not your turn' };
+    }
+
+    // Check action timing
+    if (action === 'DRAW_CARD' && gameState.hasDrawnCard) {
+        console.log(`🚫 TURN_VALIDATION: Already drawn card this turn`);
+        return { valid: false, reason: 'Already drawn card' };
+    }
+
+    if ((action === 'DISCARD' || action === 'SPREAD' || action === 'HIT') && !gameState.hasDrawnCard) {
+        console.log(`🚫 TURN_VALIDATION: Must draw card before ${action}`);
+        return { valid: false, reason: 'Must draw card first' };
+    }
+
+    console.log(`✅ TURN_VALIDATION: Action ${action} validated for player ${currentPlayer.username}`);
+    return { valid: true };
+};
+
 const handleGameAction = async (io, socket, { tableId, action, payload, clientStateHash }, gameStateManagerInstance) => {
     try {
         console.log(`🎯 handleGameAction: ${action} from socket ${socket.id} at table ${tableId}`);
@@ -92,6 +123,29 @@ const handleGameAction = async (io, socket, { tableId, action, payload, clientSt
 
         console.log(`🎯 handleGameAction: Before processing - gameOver: ${table.gameState.gameOver}`);
 
+        // ✅ CRITICAL FIX: Add turn validation before processing action
+        const turnValidation = validateTurnAction(table.gameState, socket.id, action);
+        if (!turnValidation.valid) {
+            console.log(`🚫 TURN_VALIDATION_FAILED: ${turnValidation.reason} for action ${action}`);
+            socket.emit('turn_validation_error', {
+                errorMessage: turnValidation.reason,
+                errorType: 'TURN_VALIDATION_FAILED',
+                suggestedAction: 'Please wait for your turn or refresh the game state',
+                action: action,
+                timestamp: Date.now()
+            });
+
+            // Send Unity-specific validation error
+            io.to(tableId).emit('unity_turn_validation_error', {
+                errorMessage: turnValidation.reason,
+                errorType: 'TURN_VALIDATION_FAILED',
+                playerUsername: currentPlayer.username,
+                action: action
+            });
+
+            return;
+        }
+
         // Process action synchronously with additional logging
         console.log(`🔄 PROCESSING ACTION: ${action} with payload:`, JSON.stringify(payload));
         const updatedState = processGameAction(table.gameState, action, payload);
@@ -118,9 +172,37 @@ const handleGameAction = async (io, socket, { tableId, action, payload, clientSt
         io.to(tableId).emit('game_update', updatedState);
         console.log(`📡 handleGameAction: Emitted game_update with gameOver: ${updatedState.gameOver}`);
 
-        if (!updatedState.gameOver && !updatedState.players[updatedState.currentTurn].isHuman) {
-            console.log(`🤖 handleGameAction: Delegating AI turn to GameStateManager for player ${updatedState.players[updatedState.currentTurn].username}`);
-            gameStateManagerInstance.handleAiTurn(tableId);
+        // ✅ CRITICAL FIX: Send turn start notification to Unity after action completes
+        if (!updatedState.gameOver) {
+            const nextPlayer = updatedState.players[updatedState.currentTurn];
+            console.log(`🎯 TURN_START: Sending turn notification for player ${nextPlayer.username} (human: ${nextPlayer.isHuman})`);
+
+            // Send turn start notification to all clients (including Unity)
+            io.to(tableId).emit('turn_start', {
+                playerUsername: nextPlayer.username,
+                currentTurn: updatedState.currentTurn,
+                isPlayerTurn: true,
+                turnPhase: updatedState.hasDrawnCard ? 'action_phase' : 'draw_phase',
+                gameState: updatedState,
+                message: `${nextPlayer.username}, it's your turn!`,
+                timestamp: Date.now()
+            });
+
+            // Send specific Unity event for turn management
+            io.to(tableId).emit('unity_turn_start', {
+                playerUsername: nextPlayer.username,
+                currentTurn: updatedState.currentTurn,
+                isPlayerTurn: true,
+                turnPhase: updatedState.hasDrawnCard ? 'action_phase' : 'draw_phase',
+                message: `${nextPlayer.username}, it's your turn!`
+            });
+
+            if (!nextPlayer.isHuman) {
+                console.log(`🤖 handleGameAction: Delegating AI turn to GameStateManager for player ${nextPlayer.username}`);
+                gameStateManagerInstance.handleAiTurn(tableId);
+            } else {
+                console.log(`👤 handleGameAction: Human player's turn - sent turn notification via Unity bridge`);
+            }
         } else if (updatedState.gameOver) {
             console.log(`🏁 handleGameAction: Game ended, processing results...`);
             const { winners, winType, roundScores, stake, players } = updatedState;
