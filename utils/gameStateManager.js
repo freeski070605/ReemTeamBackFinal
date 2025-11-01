@@ -643,9 +643,34 @@ class GameStateManager {
     // Also broadcast as state_sync to ensure frontend receives the game state
     this.io.to(table._id).emit('state_sync', table.gameState);
 
-    // Handle first turn
-    if (!table.gameState.gameOver && !table.gameState.players[0].isHuman) {
-      setTimeout(() => this.handleAiTurn(table._id), 1000);
+    // Handle first turn with turn notifications
+    if (!table.gameState.gameOver) {
+      const firstPlayer = table.gameState.players[0];
+      console.log(`🎯 FIRST_TURN: Sending turn notification for first player ${firstPlayer.username} (human: ${firstPlayer.isHuman})`);
+
+      // Send turn start notification for first player
+      this.io.to(table._id).emit('turn_start', {
+        playerUsername: firstPlayer.username,
+        currentTurn: 0,
+        isPlayerTurn: true,
+        turnPhase: 'draw_phase',
+        gameState: table.gameState,
+        message: `${firstPlayer.username}, it's your turn to start the game!`,
+        timestamp: Date.now()
+      });
+
+      // Send specific Unity event for turn management
+      this.io.to(table._id).emit('unity_turn_start', {
+        playerUsername: firstPlayer.username,
+        currentTurn: 0,
+        isPlayerTurn: true,
+        turnPhase: 'draw_phase',
+        message: `${firstPlayer.username}, it's your turn to start the game!`
+      });
+
+      if (!firstPlayer.isHuman) {
+        setTimeout(() => this.handleAiTurn(table._id), 1000);
+      }
     }
   }
 
