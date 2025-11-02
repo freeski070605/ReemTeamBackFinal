@@ -280,14 +280,8 @@ const handleWebSocketConnection = async (socket, io) => {
      console.log('🔄 Backend: Received unitySocketEvent:', data);
 
      try {
-         // Parse the structured JSON from Unity
-         let parsedData;
-         try {
-             parsedData = JSON.parse(data);
-         } catch (parseError) {
-             console.error('❌ Failed to parse unitySocketEvent data as JSON:', parseError);
-             return;
-         }
+         // Data should already be an object from Socket.IO deserialization
+         let parsedData = data;
 
          if (!parsedData || typeof parsedData !== 'object' || !parsedData.eventName) {
              console.error('❌ Invalid unitySocketEvent structure:', parsedData);
