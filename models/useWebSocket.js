@@ -245,8 +245,8 @@ const handleWebSocketConnection = async (socket, io) => {
     socket.emit('queue_status_full', queueStatus);
   });
 
- // Improved join queue handler
- socket.on('join_queue', async (data) => {
+ // Extracted event handlers
+ const handleJoinQueue = async (data) => {
      console.log('Join queue request:', data);
      resetInactivityTimeout(socket, io);
      try {
@@ -273,174 +273,228 @@ const handleWebSocketConnection = async (socket, io) => {
          console.error('Error joining queue:', error);
          socket.emit('error', { message: 'Failed to join queue' });
      }
-});
+ };
 
-socket.on('join_table', async ({ tableId, player }) => {
-    resetInactivityTimeout(socket, io);
-    try {
-        // Check if player is already at this table to prevent duplicates
-        const existingTable = await Table.findById(tableId);
-        if (existingTable && existingTable.players.some(p => p.username === player.username)) {
-            console.log(`Player ${player.username} already at table ${tableId}, skipping join`);
-            socket.join(tableId);
-            socket.emit('you_are_seated', {
-                tableId: tableId,
-                message: 'You are already at this table!'
-            });
-            return;
-        }
+ // Dispatcher for unitySocketEvent
+ const handleUnitySocketEvent = async (data) => {
+     console.log('🔄 Backend: Received unitySocketEvent:', data);
 
-        // Use enhanced game state manager for seamless mid-game joins
-        const newPlayerData = {
-            username: player.username,
-            chips: player.chips,
-            isHuman: true,
-            socketId: socket.id,
-            joinedAt: new Date(),
-            status: 'active'
-        };
+     try {
+         // Parse the structured JSON from Unity
+         let parsedData;
+         try {
+             parsedData = JSON.parse(data);
+         } catch (parseError) {
+             console.error('❌ Failed to parse unitySocketEvent data as JSON:', parseError);
+             return;
+         }
 
-        const joinResult = await gameStateManager.handleMidGameJoin(tableId, newPlayerData);
+         if (!parsedData || typeof parsedData !== 'object' || !parsedData.eventName) {
+             console.error('❌ Invalid unitySocketEvent structure:', parsedData);
+             return;
+         }
 
-        // --- CRITICAL FIX: Always join the socket room for the table, even if spectating ---
-        socket.join(tableId);
+         const { eventName, data: eventData } = parsedData;
+         console.log(`🎯 Backend: Dispatching unity event "${eventName}" with data:`, eventData);
 
-        if (joinResult.mode === 'spectating') {
-            // Player is spectating until hand completes
-            socket.emit('spectator_mode_active', {
-                message: joinResult.message || 'Watching current hand - you\'ll join when it completes',
-                transitionId: joinResult.transitionId,
-                tableId: tableId
-            });
-            // --- NEW: Ensure spectator receives all live game updates by being in the room ---
-            // No further action needed; joining the room above ensures this.
-        } else if (joinResult.mode === 'spectating_until_next_hand') {
-            // Table is full, spectating until next hand
-            socket.emit('spectator_mode_active', {
-                message: 'Table is full - you\'ll join the next hand',
-                willJoinNextHand: true,
-                tableId: tableId
-            });
-        } else {
-            // Normal player join
-            socket.emit('you_are_seated', {
-                tableId: tableId,
-                message: joinResult.message || 'Welcome to the table!'
-            });
-        }
+         // Dispatch to appropriate handler based on event name
+         switch (eventName) {
+             case 'join_queue':
+                 await handleJoinQueue(eventData);
+                 break;
+             case 'join_table':
+                 await handleJoinTable(eventData);
+                 break;
+             case 'join_spectator':
+                 await handleJoinSpectator(eventData);
+                 break;
+             case 'leave_queue':
+                 await handleLeaveQueue(eventData);
+                 break;
+             default:
+                 console.warn(`⚠️ Unknown unity event: ${eventName}`);
+         }
+     } catch (error) {
+         console.error('❌ Error handling unitySocketEvent:', error);
+     }
+ };
 
-        // Get updated table state
-        const table = await Table.findById(tableId);
+ socket.on('join_queue', handleJoinQueue);
 
-        // Verify that the socket ID is correctly associated with the player
-        const playerIndex = table.players.findIndex(p => p.username === player.username);
-        if (playerIndex !== -1 && table.gameState && table.gameState.players) {
-          const gameStatePlayerIndex = table.gameState.players.findIndex(p => p.username === player.username);
-          if (gameStatePlayerIndex !== -1) {
-            table.gameState.players[gameStatePlayerIndex].socketId = socket.id;
-            console.log(`✅ Verified and updated socket ID for ${player.username} in gameState`);
+ // Add handler for unitySocketEvent
+ socket.on('unitySocketEvent', handleUnitySocketEvent);
+
+ const handleJoinTable = async ({ tableId, player }) => {
+      resetInactivityTimeout(socket, io);
+      try {
+          // Check if player is already at this table to prevent duplicates
+          const existingTable = await Table.findById(tableId);
+          if (existingTable && existingTable.players.some(p => p.username === player.username)) {
+              console.log(`Player ${player.username} already at table ${tableId}, skipping join`);
+              socket.join(tableId);
+              socket.emit('you_are_seated', {
+                  tableId: tableId,
+                  message: 'You are already at this table!'
+              });
+              return;
           }
-        }
-        
-        // Send appropriate game state - always send current table state
-        if (table.gameState && table.gameState.gameStarted && !table.gameState.gameOver) {
-            // --- NEW: Spectators should also receive state_sync for live watching ---
-            console.log('Sending active game state to player/spectator:', table.gameState.players?.map(p => p.username));
-            socket.emit('state_sync', table.gameState);
-        } else {
-            // Game not started, send waiting state with current players
-            console.log('Sending waiting state with players:', table.players?.map(p => p.username));
-            socket.emit('state_sync', {
-                players: table.players,
-                stake: table.stake,
-                message: 'Waiting for players to be ready...',
-                gameStarted: false,
-                playerHands: [],
-                playerSpreads: [],
-                deck: [],
-                discardPile: [],
-                currentTurn: 0,
-                gameOver: false,
-                readyPlayers: table.readyPlayers || [],
-                isInitialized: true,
-                isLoading: false,
-                timestamp: Date.now()
-            });
-        }
 
-        // Broadcast updates
-        io.emit('tables_update', { tables: await Table.find() });
-        io.to(tableId).emit('table_players_update', {
-            players: table.players,
-            spectators: table.spectators || [],
-            readyPlayers: table.readyPlayers || [],
-            transitionStatus: gameStateManager.getTransitionStatus(tableId)
-        });
+          // Use enhanced game state manager for seamless mid-game joins
+          const newPlayerData = {
+              username: player.username,
+              chips: player.chips,
+              isHuman: true,
+              socketId: socket.id,
+              joinedAt: new Date(),
+              status: 'active'
+          };
 
-    } catch (error) {
-        console.error('Error in enhanced join_table:', error);
-        socket.emit('error', { message: 'Failed to join table' });
-    }
-});
-  
-  
+          const joinResult = await gameStateManager.handleMidGameJoin(tableId, newPlayerData);
 
-  socket.on('join_spectator', async ({ tableId }) => {
-    resetInactivityTimeout(socket, io);
-    const table = await Table.findById(tableId);
-    if (!table) return;
-  
-    // Join the room
-    socket.join(tableId);
-  
-    // Add spectator to tracking list if not present
-    if (!table.spectators.some(s => s.socketId === socket.id)) {
-      table.spectators.push({
-        username: socket.username || 'Guest',
-        socketId: socket.id,
-        joinedAt: new Date()
-      });
-      await table.save();
-    }
-  
-    const hasStarted = table?.gameState?.playerHands?.length > 0;
-  
-    if (hasStarted) {
-      console.log(`Spectator joined in-progress game at table ${tableId}`);
-      socket.emit('state_sync', {
-        ...table.gameState,
-        gameStarted: true
-      });
-    } else {
-      console.log(`Spectator joined pre-game table ${tableId}`);
-      socket.emit('state_sync', {
-        players: table.players,
-        stake: table.stake,
-        message: 'Game has not started yet. Waiting for next hand...',
-        gameStarted: false,
-        playerHands: [],
-        playerSpreads: [],
-        deck: [],
-        discardPile: [],
-        currentTurn: 0,
-        gameOver: false
-      });
-    }
-  });
-  
+          // --- CRITICAL FIX: Always join the socket room for the table, even if spectating ---
+          socket.join(tableId);
 
-  // Add a leave_queue event
-  socket.on('leave_queue', async (data) => {
-        console.log('Leave queue request:', data);
-        resetInactivityTimeout(socket, io);
-        try {
-          const { stake, username } = data;
-          removeFromQueue(stake, username); // Use the new queue manager
+          if (joinResult.mode === 'spectating') {
+              // Player is spectating until hand completes
+              socket.emit('spectator_mode_active', {
+                  message: joinResult.message || 'Watching current hand - you\'ll join when it completes',
+                  transitionId: joinResult.transitionId,
+                  tableId: tableId
+              });
+              // --- NEW: Ensure spectator receives all live game updates by being in the room ---
+              // No further action needed; joining the room above ensures this.
+          } else if (joinResult.mode === 'spectating_until_next_hand') {
+              // Table is full, spectating until next hand
+              socket.emit('spectator_mode_active', {
+                  message: 'Table is full - you\'ll join the next hand',
+                  willJoinNextHand: true,
+                  tableId: tableId
+              });
+          } else {
+              // Normal player join
+              socket.emit('you_are_seated', {
+                  tableId: tableId,
+                  message: joinResult.message || 'Welcome to the table!'
+              });
+          }
+
+          // Get updated table state
+          const table = await Table.findById(tableId);
+
+          // Verify that the socket ID is correctly associated with the player
+          const playerIndex = table.players.findIndex(p => p.username === player.username);
+          if (playerIndex !== -1 && table.gameState && table.gameState.players) {
+            const gameStatePlayerIndex = table.gameState.players.findIndex(p => p.username === player.username);
+            if (gameStatePlayerIndex !== -1) {
+              table.gameState.players[gameStatePlayerIndex].socketId = socket.id;
+              console.log(`✅ Verified and updated socket ID for ${player.username} in gameState`);
+            }
+          }
+
+          // Send appropriate game state - always send current table state
+          if (table.gameState && table.gameState.gameStarted && !table.gameState.gameOver) {
+              // --- NEW: Spectators should also receive state_sync for live watching ---
+              console.log('Sending active game state to player/spectator:', table.gameState.players?.map(p => p.username));
+              socket.emit('state_sync', table.gameState);
+          } else {
+              // Game not started, send waiting state with current players
+              console.log('Sending waiting state with players:', table.players?.map(p => p.username));
+              socket.emit('state_sync', {
+                  players: table.players,
+                  stake: table.stake,
+                  message: 'Waiting for players to be ready...',
+                  gameStarted: false,
+                  playerHands: [],
+                  playerSpreads: [],
+                  deck: [],
+                  discardPile: [],
+                  currentTurn: 0,
+                  gameOver: false,
+                  readyPlayers: table.readyPlayers || [],
+                  isInitialized: true,
+                  isLoading: false,
+                  timestamp: Date.now()
+              });
+          }
+
+          // Broadcast updates
+          io.emit('tables_update', { tables: await Table.find() });
+          io.to(tableId).emit('table_players_update', {
+              players: table.players,
+              spectators: table.spectators || [],
+              readyPlayers: table.readyPlayers || [],
+              transitionStatus: gameStateManager.getTransitionStatus(tableId)
+          });
+
       } catch (error) {
-          console.error('Error leaving queue:', error);
-          socket.emit('error', { message: 'Failed to leave queue' });
+          console.error('Error in enhanced join_table:', error);
+          socket.emit('error', { message: 'Failed to join table' });
       }
-  });
+  };
+
+  socket.on('join_table', handleJoinTable);
+  
+  
+
+  const handleJoinSpectator = async ({ tableId }) => {
+      resetInactivityTimeout(socket, io);
+      const table = await Table.findById(tableId);
+      if (!table) return;
+
+      // Join the room
+      socket.join(tableId);
+
+      // Add spectator to tracking list if not present
+      if (!table.spectators.some(s => s.socketId === socket.id)) {
+        table.spectators.push({
+          username: socket.username || 'Guest',
+          socketId: socket.id,
+          joinedAt: new Date()
+        });
+        await table.save();
+      }
+
+      const hasStarted = table?.gameState?.playerHands?.length > 0;
+
+      if (hasStarted) {
+        console.log(`Spectator joined in-progress game at table ${tableId}`);
+        socket.emit('state_sync', {
+          ...table.gameState,
+          gameStarted: true
+        });
+      } else {
+        console.log(`Spectator joined pre-game table ${tableId}`);
+        socket.emit('state_sync', {
+          players: table.players,
+          stake: table.stake,
+          message: 'Game has not started yet. Waiting for next hand...',
+          gameStarted: false,
+          playerHands: [],
+          playerSpreads: [],
+          deck: [],
+          discardPile: [],
+          currentTurn: 0,
+          gameOver: false
+        });
+      }
+  };
+
+  socket.on('join_spectator', handleJoinSpectator);
+  
+
+  const handleLeaveQueue = async (data) => {
+      console.log('Leave queue request:', data);
+      resetInactivityTimeout(socket, io);
+      try {
+        const { stake, username } = data;
+        removeFromQueue(stake, username); // Use the new queue manager
+      } catch (error) {
+        console.error('Error leaving queue:', error);
+        socket.emit('error', { message: 'Failed to leave queue' });
+      }
+  };
+
+  socket.on('leave_queue', handleLeaveQueue);
   
 
   // Track state sync requests for debugging frequent sync issues
