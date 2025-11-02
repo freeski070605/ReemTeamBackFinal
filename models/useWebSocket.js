@@ -305,6 +305,9 @@ const handleWebSocketConnection = async (socket, io) => {
              case 'leave_queue':
                  await handleLeaveQueue(eventData);
                  break;
+             case 'request_state_sync':
+                 await handleRequestStateSync(eventData);
+                 break;
              default:
                  console.warn(`⚠️ Unknown unity event: ${eventName}`);
          }
@@ -497,7 +500,7 @@ const handleWebSocketConnection = async (socket, io) => {
   // ✅ AUTOMATIC ERROR RECOVERY: Add state sync retry mechanism
   const stateSyncRetries = new Map();
 
-  socket.on('request_state_sync', async ({ tableId }) => {
+  const handleRequestStateSync = async ({ tableId }) => {
     resetInactivityTimeout(socket, io);
     try {
       // Check socket connection status
@@ -596,7 +599,9 @@ const handleWebSocketConnection = async (socket, io) => {
       console.error('Error syncing state:', error);
       socket.emit('error', { message: 'Failed to sync state' });
     }
-  });
+  };
+
+  socket.on('request_state_sync', handleRequestStateSync);
 
   socket.on('verify_state', async ({ tableId, stateHash }) => {
       resetInactivityTimeout(socket, io);
