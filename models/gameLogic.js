@@ -315,25 +315,6 @@ const processGameAction = (state, action, payload) => {
         const card = newState.deck.pop();
         newState.playerHands[currentTurn].push(card);
         newState.hasDrawnCard = true;
-
-        if (newState.deck.length === 0 && !newState.gameOver) {
-          const finalScores = newState.playerHands.map((hand, index) =>
-            calculatePoints(hand, newState.playerSpreads[index] || [])
-          );
-          const minScore = Math.min(...finalScores);
-          const winners = finalScores
-            .map((score, index) => ({ score, index }))
-            .filter(({ score }) => score === minScore)
-            .map(({ index }) => index);
-
-          console.log(`🏆 STOCK_EMPTY WIN: Deck empty, winners: [${winners.join(',')}], scores: [${finalScores.join(',')}]`);
-          newState.gameOver = true;
-          newState.winners = winners;
-          newState.winType = 'STOCK_EMPTY';
-          newState.roundScores = finalScores;
-          console.log(`🟢 END GAME TRIGGERED: STOCK_EMPTY`);
-        }
-
       }
       break;
 
@@ -352,12 +333,33 @@ const processGameAction = (state, action, payload) => {
         const discarded = newState.playerHands[currentTurn].splice(payload.cardIndex, 1)[0];
         newState.discardPile.push(discarded);
         newState.hasDrawnCard = false;
-        newState.currentTurn = (currentTurn + 1) % newState.players.length;
+
+        // ✅ Check STOCK_EMPTY win condition after discard completes turn
+        if (newState.deck.length === 0 && !newState.gameOver) {
+          const finalScores = newState.playerHands.map((hand, index) =>
+            calculatePoints(hand, newState.playerSpreads[index] || [])
+          );
+          const minScore = Math.min(...finalScores);
+          const winners = finalScores
+            .map((score, index) => ({ score, index }))
+            .filter(({ score }) => score === minScore)
+            .map(({ index }) => index);
+
+          console.log(`🏆 STOCK_EMPTY WIN: Deck empty after discard, winners: [${winners.join(',')}], scores: [${finalScores.join(',')}]`);
+          newState.gameOver = true;
+          newState.winners = winners;
+          newState.winType = 'STOCK_EMPTY';
+          newState.roundScores = finalScores;
+          console.log(`🟢 END GAME TRIGGERED: STOCK_EMPTY`);
+        } else {
+          // Advance turn only if game didn't end on STOCK_EMPTY
+          newState.currentTurn = (currentTurn + 1) % newState.players.length;
+        }
 
         // ✅ Preserve playerSpreads — nothing else needed here
 
-        // Check win condition
-        if (newState.playerHands[currentTurn].length === 0) {
+        // Check regular win condition (empty hand)
+        if (newState.playerHands[currentTurn].length === 0 && !newState.gameOver) {
           console.log(`🏆 REGULAR WIN: Player ${newState.players[currentTurn].username} has 0 cards after discard`);
           newState.gameOver = true;
           newState.winners = [currentTurn];
