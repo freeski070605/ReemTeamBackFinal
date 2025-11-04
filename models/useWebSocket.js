@@ -289,24 +289,36 @@ const handleWebSocketConnection = async (socket, io) => {
          }
 
          const { eventName, data: eventData } = parsedData;
-         console.log(`🎯 Backend: Dispatching unity event "${eventName}" with data:`, eventData);
+
+         // Parse the eventData if it's a string (Unity sends JSON strings)
+         let parsedEventData = eventData;
+         if (typeof eventData === 'string') {
+             try {
+                 parsedEventData = JSON.parse(eventData);
+             } catch (parseError) {
+                 console.error('❌ Failed to parse eventData string:', parseError);
+                 return;
+             }
+         }
+
+         console.log(`🎯 Backend: Dispatching unity event "${eventName}" with data:`, parsedEventData);
 
          // Dispatch to appropriate handler based on event name
          switch (eventName) {
              case 'join_queue':
-                 await handleJoinQueue(eventData);
+                 await handleJoinQueue(parsedEventData);
                  break;
              case 'join_table':
-                 await handleJoinTable(eventData);
+                 await handleJoinTable(parsedEventData);
                  break;
              case 'join_spectator':
-                 await handleJoinSpectator(eventData);
+                 await handleJoinSpectator(parsedEventData);
                  break;
              case 'leave_queue':
-                 await handleLeaveQueue(eventData);
+                 await handleLeaveQueue(parsedEventData);
                  break;
              case 'request_state_sync':
-                 await handleRequestStateSync(eventData);
+                 await handleRequestStateSync(parsedEventData);
                  break;
              default:
                  console.warn(`⚠️ Unknown unity event: ${eventName}`);
