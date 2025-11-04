@@ -324,6 +324,13 @@ const handleWebSocketConnection = async (socket, io) => {
  const handleJoinTable = async ({ tableId, player }) => {
       resetInactivityTimeout(socket, io);
       try {
+          // Validate input data
+          if (!tableId || !player || !player.username) {
+              console.error('Invalid join_table data:', { tableId, player });
+              socket.emit('error', { message: 'Invalid table or player data' });
+              return;
+          }
+
           // Check if player is already at this table to prevent duplicates
           const existingTable = await Table.findById(tableId);
           if (existingTable && existingTable.players.some(p => p.username === player.username)) {
@@ -500,9 +507,16 @@ const handleWebSocketConnection = async (socket, io) => {
   // ✅ AUTOMATIC ERROR RECOVERY: Add state sync retry mechanism
   const stateSyncRetries = new Map();
 
-  const handleRequestStateSync = async ({ tableId }) => {
+  const handleRequestStateSync = async ({ tableId, type }) => {
     resetInactivityTimeout(socket, io);
     try {
+      // Validate input
+      if (!tableId) {
+          console.error('❌ STATE_SYNC_ERROR: No tableId provided');
+          socket.emit('error', { message: 'No table ID provided' });
+          return;
+      }
+
       // Check socket connection status
       const isConnected = socket.connected;
       const isInRoom = socket.rooms.has(tableId);
