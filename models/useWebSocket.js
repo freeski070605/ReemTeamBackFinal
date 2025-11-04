@@ -320,6 +320,9 @@ const handleWebSocketConnection = async (socket, io) => {
              case 'request_state_sync':
                  await handleRequestStateSync(parsedEventData);
                  break;
+             case 'game_action':
+                 await handleGameAction(io, socket, parsedEventData, gameStateManager);
+                 break;
              default:
                  console.warn(`⚠️ Unknown unity event: ${eventName}`);
          }
