@@ -151,8 +151,10 @@ const handleGameAction = async (io, socket, { tableId, action, payload, clientSt
 
         // Process action synchronously with additional logging
         console.log(`🔄 PROCESSING ACTION: ${action} with payload:`, JSON.stringify(payload));
+        console.log(`🎯 handleGameAction: Before processing - hasDrawnCard: ${table.gameState.hasDrawnCard}, currentTurn: ${table.gameState.currentTurn}`);
         const updatedState = processGameAction(table.gameState, action, payload);
         console.log(`🎯 handleGameAction: After processing - gameOver: ${updatedState.gameOver}, winType: ${updatedState.winType}, winners: [${updatedState.winners?.join(',') || ''}]`);
+        console.log(`🔄 STATE_TRANSFORM: Action=${action}, Pre-hasDrawnCard=${table.gameState.hasDrawnCard}, Post-hasDrawnCard=${updatedState.hasDrawnCard}`);
         console.log(`🔄 STATE_TRANSFORM: Action=${action}, Pre-gameOver=${table.gameState.gameOver}, Post-gameOver=${updatedState.gameOver}`);
 
         console.log(`📝 handleGameAction: About to assign updatedState with gameOver: ${updatedState.gameOver}`);
