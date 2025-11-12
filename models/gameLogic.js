@@ -311,28 +311,47 @@ const processGameAction = (state, action, payload) => {
 
   switch (action) {
     case 'DRAW_CARD':
+      console.log(`🎯 DRAW_CARD: Before action - hasDrawnCard: ${newState.hasDrawnCard}, deck length: ${newState.deck?.length || 0}`);
       if (!newState.hasDrawnCard && newState.deck?.length > 0) {
         const card = newState.deck.pop();
         newState.playerHands[currentTurn].push(card);
         newState.hasDrawnCard = true;
+        console.log(`🎯 DRAW_CARD: After action - hasDrawnCard: ${newState.hasDrawnCard}, drew card: ${card.rank} of ${card.suit}`);
+      } else {
+        console.log(`🎯 DRAW_CARD: Action blocked - hasDrawnCard: ${newState.hasDrawnCard}, deck length: ${newState.deck?.length || 0}`);
       }
       break;
 
     case 'DRAW_DISCARD':
+      console.log(`🎯 DRAW_DISCARD: Before action - hasDrawnCard: ${newState.hasDrawnCard}, discard pile length: ${newState.discardPile?.length || 0}`);
       if (!newState.hasDrawnCard && newState.discardPile?.length > 0) {
         const card = newState.discardPile.pop();
         newState.playerHands[currentTurn].push(card);
         newState.hasDrawnCard = true;
-
+        console.log(`🎯 DRAW_DISCARD: After action - hasDrawnCard: ${newState.hasDrawnCard}, drew card: ${card.rank} of ${card.suit}`);
+      } else {
+        console.log(`🎯 DRAW_DISCARD: Action blocked - hasDrawnCard: ${newState.hasDrawnCard}, discard pile length: ${newState.discardPile?.length || 0}`);
       }
       break;
 
       case 'DISCARD':
-        if (!newState.hasDrawnCard || payload.cardIndex === undefined) break;
+        console.log(`🎯 DISCARD: Before action - hasDrawnCard: ${newState.hasDrawnCard}, cardIndex: ${payload.cardIndex}`);
+        console.log(`🎯 DISCARD: Player hand length: ${newState.playerHands[currentTurn]?.length || 0}`);
+        console.log(`🎯 DISCARD: Current turn player: ${newState.players[currentTurn]?.username || 'unknown'}`);
+
+        if (!newState.hasDrawnCard || payload.cardIndex === undefined) {
+          console.log(`🎯 DISCARD: Action blocked - hasDrawnCard: ${newState.hasDrawnCard}, cardIndex: ${payload.cardIndex}`);
+          console.log(`🎯 DISCARD: BLOCKED - Player must draw a card before discarding`);
+          break;
+        }
 
         const discarded = newState.playerHands[currentTurn].splice(payload.cardIndex, 1)[0];
         newState.discardPile.push(discarded);
         newState.hasDrawnCard = false;
+
+        console.log(`🎯 DISCARD: After action - hasDrawnCard: ${newState.hasDrawnCard}, discarded: ${discarded.rank} of ${discarded.suit}`);
+        console.log(`🎯 DISCARD: Player hand after discard: ${newState.playerHands[currentTurn]?.length || 0} cards`);
+        console.log(`🎯 DISCARD: Discard pile size: ${newState.discardPile.length}`);
 
         // ✅ Check STOCK_EMPTY win condition after discard completes turn
         if (newState.deck.length === 0 && !newState.gameOver) {
@@ -469,6 +488,7 @@ const processGameAction = (state, action, payload) => {
 
           console.log(`HIT: Valid hit - ${cardToHit.rank}${cardToHit.suit} added to ${newState.players[targetIndex].username}'s spread`);
 
+          console.log(`🎯 HIT: After action - hasDrawnCard reset to: ${newState.hasDrawnCard}, turn advanced to: ${newState.currentTurn}`);
           newState.hasDrawnCard = false;
           newState.currentTurn = (currentTurn + 1) % newState.players.length;
       } else {
