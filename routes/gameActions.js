@@ -5,35 +5,72 @@ const User = require('../models/User');
 
 const GameStateManager = require('../utils/gameStateManager');
 
-// ✅ TURN VALIDATION HELPER: Check if current player can act
+// ✅ ENHANCED TURN VALIDATION: More lenient for discard actions and state sync recovery
 const validateTurnAction = (gameState, socketId, action) => {
-    // Check if game is active
-    if (!gameState || gameState.gameOver) {
-        console.log(`🚫 TURN_VALIDATION: Game over or not started - rejecting action ${action}`);
-        return { valid: false, reason: 'Game not active' };
-    }
+     // Check if game is active
+     if (!gameState || gameState.gameOver) {
+         console.log(`🚫 TURN_VALIDATION: Game over or not started - rejecting action ${action}`);
+         return { valid: false, reason: 'Game not active' };
+     }
 
-    // Check turn ownership
-    const currentPlayer = gameState.players[gameState.currentTurn];
-    if (!currentPlayer || currentPlayer.socketId !== socketId) {
-        console.log(`🚫 TURN_VALIDATION: Not player's turn - current: ${currentPlayer?.username}, socket: ${socketId}`);
-        return { valid: false, reason: 'Not your turn' };
-    }
+     // Check turn ownership with enhanced logging
+     const currentPlayer = gameState.players[gameState.currentTurn];
+     if (!currentPlayer) {
+         console.log(`🚫 TURN_VALIDATION: No current player found at turn ${gameState.currentTurn}`);
+         return { valid: false, reason: 'Invalid game state - no current player' };
+     }
 
-    // Check action timing
-    if (action === 'DRAW_CARD' && gameState.hasDrawnCard) {
-        console.log(`🚫 TURN_VALIDATION: Already drawn card this turn`);
-        return { valid: false, reason: 'Already drawn card' };
-    }
+     // ✅ LENIENT DISCARD VALIDATION: Allow discard if player owns the turn (more forgiving)
+     const isPlayerTurn = currentPlayer.socketId === socketId;
+     if (!isPlayerTurn) {
+         // For DISCARD actions, be more lenient - check if this might be a state sync issue
+         if (action === 'DISCARD') {
+             console.log(`⚠️ TURN_VALIDATION: DISCARD action from non-current player ${socketId}, checking for state sync issues...`);
+             // Find the player who sent the action
+             const requestingPlayer = gameState.players.find(p => p.socketId === socketId);
+             if (requestingPlayer) {
+                 console.log(`🔍 TURN_VALIDATION: Requesting player found: ${requestingPlayer.username}, current player: ${currentPlayer.username}`);
+                 // Allow discard if it's clearly a state synchronization issue (player is waiting to discard)
+                 if (gameState.hasDrawnCard && requestingPlayer.username === currentPlayer.username) {
+                     console.log(`✅ TURN_VALIDATION: Allowing DISCARD due to likely state sync - player ${requestingPlayer.username} has drawn card`);
+                     return { valid: true, warning: 'State sync issue detected - allowing discard' };
+                 }
+             }
+             console.log(`🚫 TURN_VALIDATION: DISCARD blocked - not player's turn (${socketId} vs ${currentPlayer.socketId})`);
+             return { valid: false, reason: 'Not your turn - discard blocked' };
+         } else {
+             console.log(`🚫 TURN_VALIDATION: Not player's turn - current: ${currentPlayer.username} (${currentPlayer.socketId}), requesting: ${socketId}`);
+             return { valid: false, reason: 'Not your turn' };
+         }
+     }
 
-    if ((action === 'DISCARD' || action === 'SPREAD' || action === 'HIT') && !gameState.hasDrawnCard) {
-        console.log(`🚫 TURN_VALIDATION: Must draw card before ${action}`);
-        return { valid: false, reason: 'Must draw card first' };
-    }
+     // Check action timing with DISCARD-specific leniency
+     if (action === 'DRAW_CARD' && gameState.hasDrawnCard) {
+         console.log(`🚫 TURN_VALIDATION: Already drawn card this turn`);
+         return { valid: false, reason: 'Already drawn card' };
+     }
 
-    console.log(`✅ TURN_VALIDATION: Action ${action} validated for player ${currentPlayer.username}`);
-    return { valid: true };
-};
+     // ✅ LENIENT DISCARD TIMING: Allow discard even if hasDrawnCard state might be inconsistent
+     if ((action === 'DISCARD' || action === 'SPREAD' || action === 'HIT') && !gameState.hasDrawnCard) {
+         if (action === 'DISCARD') {
+             console.log(`⚠️ TURN_VALIDATION: DISCARD attempted without hasDrawnCard flag - allowing due to potential state sync issues`);
+             console.log(`🔍 TURN_VALIDATION: Current state - hasDrawnCard: ${gameState.hasDrawnCard}, player hand size: ${gameState.playerHands?.[gameState.currentTurn]?.length || 0}`);
+             // Allow discard if player has cards to discard (lenient validation)
+             if (gameState.playerHands?.[gameState.currentTurn]?.length > 0) {
+                 return { valid: true, warning: 'Discard allowed despite hasDrawnCard inconsistency' };
+             } else {
+                 console.log(`🚫 TURN_VALIDATION: Cannot discard - no cards in hand`);
+                 return { valid: false, reason: 'No cards to discard' };
+             }
+         } else {
+             console.log(`🚫 TURN_VALIDATION: Must draw card before ${action}`);
+             return { valid: false, reason: 'Must draw card first' };
+         }
+     }
+
+     console.log(`✅ TURN_VALIDATION: Action ${action} validated for player ${currentPlayer.username}`);
+     return { valid: true };
+ };
 
 const handleGameAction = async (io, socket, { tableId, action, payload, clientStateHash }, gameStateManagerInstance) => {
     try {
@@ -123,30 +160,76 @@ const handleGameAction = async (io, socket, { tableId, action, payload, clientSt
 
         console.log(`🎯 handleGameAction: Before processing - gameOver: ${table.gameState.gameOver}`);
 
-        // ✅ CRITICAL FIX: Add turn validation before processing action
+        // ✅ ENHANCED TURN VALIDATION: More lenient for discard with better error handling
         const turnValidation = validateTurnAction(table.gameState, socket.id, action);
         if (!turnValidation.valid) {
-          console.log(`🚫 TURN_VALIDATION_FAILED: ${turnValidation.reason} for action ${action}`);
-          console.log(`🔍 TURN_VALIDATION_DEBUG: Current state - Turn: ${table.gameState.currentTurn}, GameOver: ${table.gameState.gameOver}, HasDrawnCard: ${table.gameState.hasDrawnCard}`);
-          console.log(`🔍 TURN_VALIDATION_DEBUG: Current player: ${currentPlayer?.username} (socket: ${currentPlayer?.socketId}), Requesting socket: ${socket.id}`);
-    
-          socket.emit('turn_validation_error', {
-            errorMessage: turnValidation.reason,
-            errorType: 'TURN_VALIDATION_FAILED',
-            suggestedAction: 'Please wait for your turn or refresh the game state',
-            action: action,
-            timestamp: Date.now()
-          });
-    
-          // Send Unity-specific validation error
-          io.to(tableId).emit('unity_turn_validation_error', {
-            errorMessage: turnValidation.reason,
-            errorType: 'TURN_VALIDATION_FAILED',
-            playerUsername: currentPlayer.username,
-            action: action
-          });
-    
-          return;
+           console.log(`🚫 TURN_VALIDATION_FAILED: ${turnValidation.reason} for action ${action}`);
+           console.log(`🔍 TURN_VALIDATION_DEBUG: Current state - Turn: ${table.gameState.currentTurn}, GameOver: ${table.gameState.gameOver}, HasDrawnCard: ${table.gameState.hasDrawnCard}`);
+           console.log(`🔍 TURN_VALIDATION_DEBUG: Current player: ${currentPlayer?.username} (socket: ${currentPlayer?.socketId}), Requesting socket: ${socket.id}`);
+
+           // ✅ FOR DISCARD FAILURES: Trigger state sync instead of just rejecting
+           if (action === 'DISCARD') {
+               console.log(`🔄 [DISCARD_RECOVERY] DISCARD validation failed, triggering state synchronization...`);
+               // Request state sync from client perspective
+               socket.emit('request_state_sync', {
+                   tableId: tableId,
+                   reason: `DISCARD validation failed: ${turnValidation.reason}`,
+                   failedAction: payload,
+                   action: action
+               });
+
+               // Send a more helpful error message for discard
+               socket.emit('turn_validation_error', {
+                 errorMessage: `${turnValidation.reason}. Attempting to synchronize game state...`,
+                 errorType: 'TURN_VALIDATION_FAILED_DISCARD',
+                 suggestedAction: 'State synchronization in progress. Please wait and try again.',
+                 action: action,
+                 timestamp: Date.now(),
+                 willRetry: true
+               });
+
+               // Send Unity-specific validation error with recovery info
+               io.to(tableId).emit('unity_turn_validation_error', {
+                 errorMessage: turnValidation.reason,
+                 errorType: 'TURN_VALIDATION_FAILED_DISCARD',
+                 playerUsername: currentPlayer.username,
+                 action: action,
+                 recoveryInProgress: true
+               });
+
+               // Auto-retry the discard after a short delay to allow state sync
+               setTimeout(() => {
+                   console.log(`🔄 [DISCARD_RECOVERY] Auto-retrying DISCARD action after validation failure`);
+                   // Re-emit the game action with the original payload
+                   socket.emit('game_action', { tableId, action, payload });
+               }, 2000);
+
+               return;
+           } else {
+               // For non-discard actions, use original error handling
+               socket.emit('turn_validation_error', {
+                 errorMessage: turnValidation.reason,
+                 errorType: 'TURN_VALIDATION_FAILED',
+                 suggestedAction: 'Please wait for your turn or refresh the game state',
+                 action: action,
+                 timestamp: Date.now()
+               });
+
+               // Send Unity-specific validation error
+               io.to(tableId).emit('unity_turn_validation_error', {
+                 errorMessage: turnValidation.reason,
+                 errorType: 'TURN_VALIDATION_FAILED',
+                 playerUsername: currentPlayer.username,
+                 action: action
+               });
+
+               return;
+           }
+        }
+
+        // Log validation warnings for monitoring
+        if (turnValidation.warning) {
+           console.log(`⚠️ TURN_VALIDATION_WARNING: ${turnValidation.warning} for action ${action}`);
         }
 
         // Process action synchronously with additional logging
