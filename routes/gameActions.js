@@ -50,22 +50,10 @@ const validateTurnAction = (gameState, socketId, action) => {
          return { valid: false, reason: 'Already drawn card' };
      }
 
-     // ✅ LENIENT DISCARD TIMING: Allow discard even if hasDrawnCard state might be inconsistent
-     if ((action === 'DISCARD' || action === 'SPREAD' || action === 'HIT') && !gameState.hasDrawnCard) {
-         if (action === 'DISCARD') {
-             console.log(`⚠️ TURN_VALIDATION: DISCARD attempted without hasDrawnCard flag - allowing due to potential state sync issues`);
-             console.log(`🔍 TURN_VALIDATION: Current state - hasDrawnCard: ${gameState.hasDrawnCard}, player hand size: ${gameState.playerHands?.[gameState.currentTurn]?.length || 0}`);
-             // Allow discard if player has cards to discard (lenient validation)
-             if (gameState.playerHands?.[gameState.currentTurn]?.length > 0) {
-                 return { valid: true, warning: 'Discard allowed despite hasDrawnCard inconsistency' };
-             } else {
-                 console.log(`🚫 TURN_VALIDATION: Cannot discard - no cards in hand`);
-                 return { valid: false, reason: 'No cards to discard' };
-             }
-         } else {
-             console.log(`🚫 TURN_VALIDATION: Must draw card before ${action}`);
-             return { valid: false, reason: 'Must draw card first' };
-         }
+     // ✅ REEMTEAM VARIANT: Allow discard from initial hand (no hasDrawnCard requirement)
+     if ((action === 'SPREAD' || action === 'HIT') && !gameState.hasDrawnCard) {
+         console.log(`🚫 TURN_VALIDATION: Must draw card before ${action}`);
+         return { valid: false, reason: 'Must draw card first' };
      }
 
      console.log(`✅ TURN_VALIDATION: Action ${action} validated for player ${currentPlayer.username}`);
