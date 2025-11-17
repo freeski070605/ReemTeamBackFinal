@@ -10,6 +10,20 @@ const createDeck = () => {
       deck.push({ rank, suit });
     }
   }
+  console.log(`🃏 createDeck: Created deck with ${deck.length} cards (expected: 40)`);
+  console.log(`🃏 createDeck: Ranks: ${ranks.join(', ')}`);
+  console.log(`🃏 createDeck: Suits: ${suits.join(', ')}`);
+
+  // Verify deck composition
+  const rankCounts = {};
+  const suitCounts = {};
+  deck.forEach(card => {
+    rankCounts[card.rank] = (rankCounts[card.rank] || 0) + 1;
+    suitCounts[card.suit] = (suitCounts[card.suit] || 0) + 1;
+  });
+  console.log(`🃏 createDeck: Rank distribution:`, rankCounts);
+  console.log(`🃏 createDeck: Suit distribution:`, suitCounts);
+
   return deck;
 };
 
@@ -339,9 +353,10 @@ const processGameAction = (state, action, payload) => {
         console.log(`🎯 DISCARD: Player hand length: ${newState.playerHands[currentTurn]?.length || 0}`);
         console.log(`🎯 DISCARD: Current turn player: ${newState.players[currentTurn]?.username || 'unknown'}`);
 
-        if (!newState.hasDrawnCard || payload.cardIndex === undefined) {
-          console.log(`🎯 DISCARD: Action blocked - hasDrawnCard: ${newState.hasDrawnCard}, cardIndex: ${payload.cardIndex}`);
-          console.log(`🎯 DISCARD: BLOCKED - Player must draw a card before discarding`);
+        // ✅ REEMTEAM VARIANT: Allow discard from initial hand (no hasDrawnCard requirement)
+        if (payload.cardIndex === undefined || newState.playerHands[currentTurn]?.length === 0) {
+          console.log(`🎯 DISCARD: Action blocked - cardIndex: ${payload.cardIndex}, hand length: ${newState.playerHands[currentTurn]?.length || 0}`);
+          console.log(`🎯 DISCARD: BLOCKED - Invalid card index or no cards to discard`);
           break;
         }
 
