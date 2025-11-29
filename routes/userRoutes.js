@@ -44,12 +44,12 @@ router.post('/register', async (req, res) => {
             });
         }
 
-        // Create new user with initial chips
+        // Create new user with initial cash balance
         const user = new User({
             username: username.trim(),
             email: email.trim().toLowerCase(),
             password,
-            chips: 1000, // Starting chips for new users
+            cashBalance: 1000, // Starting cash balance for new users
             isAdmin: false,
             lastLogin: new Date(),
             stats: {
@@ -64,7 +64,7 @@ router.post('/register', async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'Registration successful',
-            initialChips: user.chips
+            initialCashBalance: user.cashBalance
         });
 
     } catch (error) {
@@ -110,7 +110,7 @@ router.post('/login', async (req, res) => {
             _id: user._id,
             username: user.username,
             email: user.email,
-            chips: user.chips,
+            cashBalance: user.cashBalance,
             isAdmin: user.isAdmin,
             stats: user.stats,
             lastLogin: user.lastLogin,
@@ -191,10 +191,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
     }
 });
 
-// Enhanced chip update route with transaction logging
-router.put('/:username/updateChips', async (req, res) => {
+// Enhanced cash balance update route with transaction logging
+router.put('/:username/updateCashBalance', async (req, res) => {
     const { username } = req.params;
-    const { chips, gameId, reason, transactionId } = req.body;
+    const { cashBalance, gameId, reason, transactionId } = req.body;
 
     try {
         const user = await User.findOne({ username });
@@ -205,8 +205,8 @@ router.put('/:username/updateChips', async (req, res) => {
             });
         }
 
-        const previousBalance = user.chips;
-        user.chips = chips;
+        const previousBalance = user.cashBalance;
+        user.cashBalance = cashBalance;
         // Initialize stats if they don't exist
         if (!user.stats) {
             user.stats = {
@@ -216,7 +216,7 @@ router.put('/:username/updateChips', async (req, res) => {
                 totalEarnings: 0
             };
         }
-        user.stats.totalEarnings += chips - previousBalance;
+        user.stats.totalEarnings += cashBalance - previousBalance;
 
         // Check for duplicate transactionId to prevent double processing
         if (transactionId && user.transactions.some(t => t.transactionId === transactionId)) {
@@ -249,7 +249,7 @@ router.put('/:username/updateChips', async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            message: 'Failed to update chips',
+            message: 'Failed to update cash balance',
             error: error.message
         });
     }
@@ -291,7 +291,7 @@ router.get('/:username', async (req, res) => {
 router.get('/:username/balance', async (req, res) => {
     try {
         const user = await User.findOne({ username: req.params.username })
-            .select('chips');
+            .select('cashBalance');
 
         if (!user) {
             return res.status(404).json({
@@ -302,7 +302,7 @@ router.get('/:username/balance', async (req, res) => {
 
         res.status(200).json({
             success: true,
-            chips: user.chips
+            cashBalance: user.cashBalance
         });
     } catch (error) {
         res.status(500).json({
