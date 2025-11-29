@@ -44,8 +44,9 @@ class GameStateManager {
       return this.initiateAiToHumanTransition(table, newPlayer);
     } else {
       // No AI, add as spectator until next hand
+      console.log(`[DEBUG] handleMidGameJoin: Adding ${newPlayer.username} as spectator until next hand at table ${table._id}`);
       return this.addAsSpectatorUntilNextHand(table, newPlayer);
-    }
+   }
   }
 
   /**
@@ -168,9 +169,11 @@ class GameStateManager {
    */
   async handleNormalJoin(table, newPlayer) {
     // Add player normally
+    const user = await User.findOne({ username: newPlayer.username });
+    const chips = user.chips;
     table.players.push({
       username: newPlayer.username,
-      chips: newPlayer.chips,
+      chips: chips,
       isHuman: true,
       socketId: newPlayer.socketId,
       joinedAt: new Date(),
@@ -237,6 +240,7 @@ class GameStateManager {
       // Check if hand is complete
       if (!table.gameState || table.gameState.gameOver || !table.gameState.gameStarted) {
         await this.completeTransition(transitionId, table);
+        console.log(`[DEBUG] checkPendingTransitions: Completing transition ${transitionId} for table ${table._id}`);
       }
     }
   }
@@ -376,8 +380,114 @@ class GameStateManager {
     const avgCardsPerPlayer = gameState.playerHands.reduce((sum, hand) => sum + hand.length, 0) / gameState.players.length;
     const estimatedTurns = avgCardsPerPlayer * gameState.players.length;
     const avgTurnTime = 15; // seconds per turn
-
+    
     return Math.round(estimatedTurns * avgTurnTime);
+  }
+
+  /**
+   * Enhanced state reconciliation system
+   */
+  async reconcileGameState(tableId, clientState, clientHash) {
+    try {
+      const table = await Table.findById(tableId);
+      if (!table || !table.gameState) {
+        console.log(`❌ State reconciliation: Table ${tableId} not found or no game state`);
+        return { reconciled: false, reason: 'Table or game state not found' };
+      }
+
+      const serverState = table.gameState;
+      const serverHash = this.calculateStateHash(serverState);
+
+      // Check if states match
+      if (serverHash === clientHash) {
+        console.log(`✅ State reconciliation: States match for table ${tableId}`);
+        return { reconciled: true, state: serverState };
+      }
+
+      console.log(`⚠️ State reconciliation: Mismatch detected for table ${tableId}`);
+      console.log(`Server hash: ${serverHash}, Client hash: ${clientHash}`);
+
+      // Perform detailed comparison and reconciliation
+      const differences = this.compareGameStates(serverState, clientState);
+
+      if (differences.length === 0) {
+        console.log(`✅ State reconciliation: No significant differences found`);
+        return { reconciled: true, state: serverState };
+      }
+
+      console.log(`🔄 State reconciliation: Found ${differences.length} differences, applying server state`);
+
+      // Notify client of reconciliation
+      this.io.to(tableId).emit('state_reconciled', {
+        serverState: serverState,
+        differences: differences,
+        timestamp: Date.now()
+      });
+
+      return { reconciled: true, state: serverState, reconciled: true };
+
+    } catch (error) {
+      console.error('❌ State reconciliation error:', error);
+      return { reconciled: false, reason: error.message };
+    }
+  }
+
+  /**
+   * Compare two game states and identify differences
+   */
+  compareGameStates(serverState, clientState) {
+    const differences = [];
+
+    // Compare basic properties
+    const propertiesToCompare = [
+      'currentTurn', 'gameOver', 'gameStarted', 'hasDrawnCard',
+      'pot', 'stake', 'isInitialized', 'isLoading'
+    ];
+
+    propertiesToCompare.forEach(prop => {
+      if (serverState[prop] !== clientState[prop]) {
+        differences.push({
+          property: prop,
+          server: serverState[prop],
+          client: clientState[prop]
+        });
+      }
+    });
+
+    // Compare player counts
+    if (serverState.players?.length !== clientState.players?.length) {
+      differences.push({
+        property: 'playerCount',
+        server: serverState.players?.length || 0,
+        client: clientState.players?.length || 0
+      });
+    }
+
+    // Compare hand sizes
+    if (serverState.playerHands && clientState.playerHands) {
+      for (let i = 0; i < Math.max(serverState.playerHands.length, clientState.playerHands.length); i++) {
+        const serverHand = serverState.playerHands[i] || [];
+        const clientHand = clientState.playerHands[i] || [];
+
+        if (serverHand.length !== clientHand.length) {
+          differences.push({
+            property: `playerHand_${i}_length`,
+            server: serverHand.length,
+            client: clientHand.length
+          });
+        }
+      }
+    }
+
+    return differences;
+  }
+
+  /**
+   * Calculate state hash for comparison
+   */
+  calculateStateHash(state) {
+    const normalized = JSON.stringify(state, Object.keys(state).sort());
+    return require('crypto').createHash('sha256').update(normalized).digest('hex');
   }
 
   /**
@@ -472,13 +582,19 @@ class GameStateManager {
             console.log(`🚫 Cannot start new hand - game in progress at table ${tableId} (latest state)`);
             console.log(`🔍 Current game state: gameStarted: ${latestGameState?.gameStarted}, gameOver: ${latestGameState?.gameOver}`);
         }
-    }
-}
+        console.log(`[DEBUG] handlePlayerReady: All humans ready, checking game state before starting new hand:`, {
+          gameStarted: latestGameState?.gameStarted,
+          gameOver: latestGameState?.gameOver,
+          hasPendingTransition: hasPendingTransition
+        });
+      }
+  }
 
   /**
    * Start new hand with enhanced features
    */
   async startNewHand(table) {
+    console.log(`[DEBUG] startNewHand: Starting new hand at table ${table._id}`);
     console.log(`🎮 Starting new hand at table ${table._id}`);
 
     // ✅ Completely clear old game state before initializing new one
@@ -527,9 +643,34 @@ class GameStateManager {
     // Also broadcast as state_sync to ensure frontend receives the game state
     this.io.to(table._id).emit('state_sync', table.gameState);
 
-    // Handle first turn
-    if (!table.gameState.gameOver && !table.gameState.players[0].isHuman) {
-      setTimeout(() => this.handleAiTurn(table._id), 1000);
+    // Handle first turn with turn notifications
+    if (!table.gameState.gameOver) {
+      const firstPlayer = table.gameState.players[0];
+      console.log(`🎯 FIRST_TURN: Sending turn notification for first player ${firstPlayer.username} (human: ${firstPlayer.isHuman})`);
+
+      // Send turn start notification for first player
+      this.io.to(table._id).emit('turn_start', {
+        playerUsername: firstPlayer.username,
+        currentTurn: 0,
+        isPlayerTurn: true,
+        turnPhase: 'draw_phase',
+        gameState: table.gameState,
+        message: `${firstPlayer.username}, it's your turn to start the game!`,
+        timestamp: Date.now()
+      });
+
+      // Send specific Unity event for turn management
+      this.io.to(table._id).emit('unity_turn_start', {
+        playerUsername: firstPlayer.username,
+        currentTurn: 0,
+        isPlayerTurn: true,
+        turnPhase: 'draw_phase',
+        message: `${firstPlayer.username}, it's your turn to start the game!`
+      });
+
+      if (!firstPlayer.isHuman) {
+        setTimeout(() => this.handleAiTurn(table._id), 1000);
+      }
     }
   }
 
@@ -735,8 +876,6 @@ class GameStateManager {
       readyPlayers: table.readyPlayers || []
     });
   }
-
-
 
 
   /**

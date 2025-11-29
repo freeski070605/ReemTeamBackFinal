@@ -10,6 +10,20 @@ const createDeck = () => {
       deck.push({ rank, suit });
     }
   }
+  console.log(`🃏 createDeck: Created deck with ${deck.length} cards (expected: 40)`);
+  console.log(`🃏 createDeck: Ranks: ${ranks.join(', ')}`);
+  console.log(`🃏 createDeck: Suits: ${suits.join(', ')}`);
+
+  // Verify deck composition
+  const rankCounts = {};
+  const suitCounts = {};
+  deck.forEach(card => {
+    rankCounts[card.rank] = (rankCounts[card.rank] || 0) + 1;
+    suitCounts[card.suit] = (suitCounts[card.suit] || 0) + 1;
+  });
+  console.log(`🃏 createDeck: Rank distribution:`, rankCounts);
+  console.log(`🃏 createDeck: Suit distribution:`, suitCounts);
+
   return deck;
 };
 
@@ -285,26 +299,76 @@ const initializeGameState = (table) => {
 };
 
 const processGameAction = (state, action, payload) => {
-  const newState = { ...state };
-  const currentTurn = newState.currentTurn;
-  const playerHand = newState.playerHands?.[currentTurn] || [];
+   const newState = { ...state };
+   const currentTurn = newState.currentTurn;
+   const playerHand = newState.playerHands?.[currentTurn] || [];
 
-  console.log(`⚙️ processGameAction: Processing ${action} for player ${newState.players[currentTurn].username} (turn ${currentTurn})`);
-  console.log(`⚙️ processGameAction: Before action - gameOver: ${newState.gameOver}, hand size: ${playerHand.length}`);
-  
-  // ✅ Ensure playerSpreads is always properly initialized
-  if (!newState.playerSpreads || !Array.isArray(newState.playerSpreads)) {
-    console.log(`⚙️ processGameAction: Initializing playerSpreads array`);
-    newState.playerSpreads = Array.from({ length: newState.players.length }, () => []);
-  }
+   console.log(`⚙️ processGameAction: Processing ${action} for player ${newState.players[currentTurn]?.username || 'unknown'} (turn ${currentTurn})`);
+   console.log(`⚙️ processGameAction: Before action - gameOver: ${newState.gameOver}, hand size: ${playerHand.length}`);
+
+   // ✅ Critical turn validation - ensure game isn't over and player exists
+   if (newState.gameOver) {
+     console.log(`⚙️ processGameAction: Game is already over - rejecting action ${action}`);
+     return newState;
+   }
+
+   if (!newState.players || !newState.players[currentTurn]) {
+     console.log(`⚙️ processGameAction: Invalid current turn ${currentTurn} - players array issue`);
+     return newState;
+   }
+
+   // ✅ Ensure playerSpreads is always properly initialized
+   if (!newState.playerSpreads || !Array.isArray(newState.playerSpreads)) {
+     console.log(`⚙️ processGameAction: Initializing playerSpreads array`);
+     newState.playerSpreads = Array.from({ length: newState.players.length }, () => []);
+   }
 
   switch (action) {
     case 'DRAW_CARD':
+      console.log(`🎯 DRAW_CARD: Before action - hasDrawnCard: ${newState.hasDrawnCard}, deck length: ${newState.deck?.length || 0}`);
       if (!newState.hasDrawnCard && newState.deck?.length > 0) {
         const card = newState.deck.pop();
         newState.playerHands[currentTurn].push(card);
         newState.hasDrawnCard = true;
+        console.log(`🎯 DRAW_CARD: After action - hasDrawnCard: ${newState.hasDrawnCard}, drew card: ${card.rank} of ${card.suit}`);
+      } else {
+        console.log(`🎯 DRAW_CARD: Action blocked - hasDrawnCard: ${newState.hasDrawnCard}, deck length: ${newState.deck?.length || 0}`);
+      }
+      break;
 
+    case 'DRAW_DISCARD':
+      console.log(`🎯 DRAW_DISCARD: Before action - hasDrawnCard: ${newState.hasDrawnCard}, discard pile length: ${newState.discardPile?.length || 0}`);
+      if (!newState.hasDrawnCard && newState.discardPile?.length > 0) {
+        const card = newState.discardPile.pop();
+        newState.playerHands[currentTurn].push(card);
+        newState.hasDrawnCard = true;
+        console.log(`🎯 DRAW_DISCARD: After action - hasDrawnCard: ${newState.hasDrawnCard}, drew card: ${card.rank} of ${card.suit}`);
+      } else {
+        console.log(`🎯 DRAW_DISCARD: Action blocked - hasDrawnCard: ${newState.hasDrawnCard}, discard pile length: ${newState.discardPile?.length || 0}`);
+      }
+      break;
+
+      case 'DISCARD':
+        console.log(`🎯 DISCARD: Before action - hasDrawnCard: ${newState.hasDrawnCard}, cardIndex: ${payload.cardIndex}`);
+        console.log(`🎯 DISCARD: Player hand length: ${newState.playerHands[currentTurn]?.length || 0}`);
+        console.log(`🎯 DISCARD: Current turn player: ${newState.players[currentTurn]?.username || 'unknown'}`);
+
+        // ✅ REEMTEAM VARIANT: Allow discard from initial hand (no hasDrawnCard requirement)
+        if (payload.cardIndex === undefined || newState.playerHands[currentTurn]?.length === 0) {
+          console.log(`🎯 DISCARD: Action blocked - cardIndex: ${payload.cardIndex}, hand length: ${newState.playerHands[currentTurn]?.length || 0}`);
+          console.log(`🎯 DISCARD: BLOCKED - Invalid card index or no cards to discard`);
+          break;
+        }
+
+        const discarded = newState.playerHands[currentTurn].splice(payload.cardIndex, 1)[0];
+        newState.discardPile.push(discarded);
+        newState.hasDrawnCard = false;
+
+        console.log(`🎯 DISCARD: After action - hasDrawnCard: ${newState.hasDrawnCard}, discarded: ${discarded.rank} of ${discarded.suit}`);
+        console.log(`🎯 DISCARD: Player hand after discard: ${newState.playerHands[currentTurn]?.length || 0} cards`);
+        console.log(`🎯 DISCARD: Discard pile size: ${newState.discardPile.length}`);
+
+        // ✅ Check STOCK_EMPTY win condition after discard completes turn
         if (newState.deck.length === 0 && !newState.gameOver) {
           const finalScores = newState.playerHands.map((hand, index) =>
             calculatePoints(hand, newState.playerSpreads[index] || [])
@@ -315,38 +379,21 @@ const processGameAction = (state, action, payload) => {
             .filter(({ score }) => score === minScore)
             .map(({ index }) => index);
 
-          console.log(`🏆 STOCK_EMPTY WIN: Deck empty, winners: [${winners.join(',')}], scores: [${finalScores.join(',')}]`);
+          console.log(`🏆 STOCK_EMPTY WIN: Deck empty after discard, winners: [${winners.join(',')}], scores: [${finalScores.join(',')}]`);
           newState.gameOver = true;
           newState.winners = winners;
           newState.winType = 'STOCK_EMPTY';
           newState.roundScores = finalScores;
           console.log(`🟢 END GAME TRIGGERED: STOCK_EMPTY`);
+        } else {
+          // Advance turn only if game didn't end on STOCK_EMPTY
+          newState.currentTurn = (currentTurn + 1) % newState.players.length;
         }
-
-      }
-      break;
-
-    case 'DRAW_DISCARD':
-      if (!newState.hasDrawnCard && newState.discardPile?.length > 0) {
-        const card = newState.discardPile.pop();
-        newState.playerHands[currentTurn].push(card);
-        newState.hasDrawnCard = true;
-
-      }
-      break;
-
-      case 'DISCARD':
-        if (!newState.hasDrawnCard || payload.cardIndex === undefined) break;
-
-        const discarded = newState.playerHands[currentTurn].splice(payload.cardIndex, 1)[0];
-        newState.discardPile.push(discarded);
-        newState.hasDrawnCard = false;
-        newState.currentTurn = (currentTurn + 1) % newState.players.length;
 
         // ✅ Preserve playerSpreads — nothing else needed here
 
-        // Check win condition
-        if (newState.playerHands[currentTurn].length === 0) {
+        // Check regular win condition (empty hand)
+        if (newState.playerHands[currentTurn].length === 0 && !newState.gameOver) {
           console.log(`🏆 REGULAR WIN: Player ${newState.players[currentTurn].username} has 0 cards after discard`);
           newState.gameOver = true;
           newState.winners = [currentTurn];
@@ -416,26 +463,54 @@ const processGameAction = (state, action, payload) => {
         break;
 
     case 'HIT':
-        const { cardIndex, targetIndex, spreadIndex } = payload;
-        const cardToHit = newState.playerHands[currentTurn][cardIndex];
-        const targetSpread = newState.playerSpreads?.[targetIndex]?.[spreadIndex];
-    
-        if (isValidHit(cardToHit, targetSpread)) {
-            newState.playerHands[currentTurn].splice(cardIndex, 1);
-            newState.playerSpreads[targetIndex][spreadIndex].push(cardToHit);
-    
-            // Apply penalty
-            const targetPlayer = newState.players[targetIndex];
-            if (!targetPlayer.hitCount) {
-                targetPlayer.hitCount = 0;
-            }
-            targetPlayer.hitCount++;
-            targetPlayer.hitPenaltyRounds = (targetPlayer.hitCount === 1) ? 2 : 1;
-    
-            newState.hasDrawnCard = false;
-            newState.currentTurn = (currentTurn + 1) % newState.players.length;
-        }
+      console.log(`HIT: Processing hit from player ${currentTurn} (${newState.players[currentTurn].username})`);
+
+      // ✅ Validate it's the player's turn
+      if (newState.hasDrawnCard === false) {
+        console.log(`HIT: Invalid - player must draw a card before hitting`);
         break;
+      }
+
+      const { cardIndex, targetIndex, spreadIndex } = payload;
+      if (cardIndex === undefined || targetIndex === undefined || spreadIndex === undefined) {
+        console.log(`HIT: Invalid payload - missing required indices`);
+        break;
+      }
+
+      const cardToHit = newState.playerHands[currentTurn]?.[cardIndex];
+      if (!cardToHit) {
+        console.log(`HIT: Invalid card index ${cardIndex}`);
+        break;
+      }
+
+      const targetSpread = newState.playerSpreads?.[targetIndex]?.[spreadIndex];
+      if (!targetSpread || targetSpread.length < 3) {
+        console.log(`HIT: Invalid target spread at ${targetIndex}, ${spreadIndex}`);
+        break;
+      }
+
+      if (isValidHit(cardToHit, targetSpread)) {
+          newState.playerHands[currentTurn].splice(cardIndex, 1);
+          newState.playerSpreads[targetIndex][spreadIndex].push(cardToHit);
+
+          // Apply penalty
+          const targetPlayer = newState.players[targetIndex];
+          if (!targetPlayer.hitCount) {
+              targetPlayer.hitCount = 0;
+          }
+          targetPlayer.hitCount++;
+          targetPlayer.hitPenaltyRounds = (targetPlayer.hitCount === 1) ? 2 : 1;
+
+          console.log(`HIT: Valid hit - ${cardToHit.rank}${cardToHit.suit} added to ${newState.players[targetIndex].username}'s spread`);
+
+          console.log(`🎯 HIT: After action - hasDrawnCard reset to: ${newState.hasDrawnCard}, turn advanced to: ${newState.currentTurn}`);
+          newState.hasDrawnCard = false;
+          newState.currentTurn = (currentTurn + 1) % newState.players.length;
+      } else {
+          console.log(`HIT: Invalid hit attempt - advancing turn anyway`);
+          newState.currentTurn = (currentTurn + 1) % newState.players.length;
+      }
+      break;
 
 
       case 'DROP':
@@ -495,43 +570,64 @@ const processGameAction = (state, action, payload) => {
   return newState;
 };
 
-const handleAiDeparture = (gameState) => {
+const handleAiDeparture = (gameState, action, aiPlayer) => {
   const humanPlayers = gameState.players.filter(p => p.isHuman);
   const aiPlayers = gameState.players.filter(p => !p.isHuman);
 
-  // Condition 1: If there are 2 or more human players, AI leaves
-  if (humanPlayers.length >= 2 && aiPlayers.length > 0) {
-    console.log(`🤖 AI Departure: Game over with ${humanPlayers.length} human players. AI(s) will leave.`);
-    // Remove all AI players
-    gameState.players = gameState.players.filter(p => p.isHuman);
-    // Re-index playerHands and playerSpreads to match new player array
-    const newPlayerHands = [];
-    const newPlayerSpreads = [];
-    gameState.players.forEach(humanPlayer => {
-      const originalIndex = gameState.players.findIndex(p => p.username === humanPlayer.username);
-      if (originalIndex !== -1) {
-        newPlayerHands.push(gameState.playerHands[originalIndex]);
-        newPlayerSpreads.push(gameState.playerSpreads[originalIndex]);
+  if (action === 'departure') {
+    // Condition 1: If there are 2 or more human players, AI leaves
+    if (humanPlayers.length >= 2 && aiPlayers.length > 0) {
+      console.log(`🤖 AI Departure: Game over with ${humanPlayers.length} human players. AI(s) will leave.`);
+      // Remove all AI players
+      gameState.players = gameState.players.filter(p => p.isHuman);
+      // Re-index playerHands and playerSpreads to match new player array
+      const newPlayerHands = [];
+      const newPlayerSpreads = [];
+      gameState.players.forEach(humanPlayer => {
+        const originalIndex = gameState.players.findIndex(p => p.username === humanPlayer.username);
+        if (originalIndex !== -1) {
+          newPlayerHands.push(gameState.playerHands[originalIndex]);
+          newPlayerSpreads.push(gameState.playerSpreads[originalIndex]);
+        }
+      });
+      gameState.playerHands = newPlayerHands;
+      gameState.playerSpreads = newPlayerSpreads;
+      // Reset currentTurn if the current player was an AI that left
+      if (!gameState.players[gameState.currentTurn]?.isHuman) {
+        gameState.currentTurn = 0; // Or find the next human player
       }
-    });
-    gameState.playerHands = newPlayerHands;
-    gameState.playerSpreads = newPlayerSpreads;
-    // Reset currentTurn if the current player was an AI that left
-    if (!gameState.players[gameState.currentTurn]?.isHuman) {
-      gameState.currentTurn = 0; // Or find the next human player
+    }
+    // Condition 2: If there is only human vs AI at a table and the human leaves, the AI needs to leave as well
+    // This condition is typically handled by the player leaving logic, not game end.
+    // However, if a human player leaves and it results in only one human and one AI, and then the game ends,
+    // the above condition (humanPlayers.length >= 2) would not apply.
+    // This specific scenario (human leaves, then AI leaves if only human vs AI) needs to be handled
+    // where player disconnections are processed, likely in useWebSocket.js or gameActions.js.
+    // For now, I'll assume this function is called only when the game *ends*.
+    // If a human leaves mid-game, the game state would be updated elsewhere, and then if the game ends,
+    // the above logic would apply.
+  } else if (action === 'addition') {
+    // Add AI when human count drops to 1 during ongoing games
+    if (humanPlayers.length === 1 && aiPlayers.length === 0 && aiPlayer) {
+      console.log(`🤖 AI Addition: Adding AI player to ongoing game - ${humanPlayers.length} human(s) remaining.`);
+      // Add AI to game state
+      gameState.players.push({
+        username: aiPlayer.username,
+        chips: aiPlayer.chips,
+        isHuman: aiPlayer.isHuman,
+        socketId: aiPlayer.socketId,
+        status: aiPlayer.status,
+        hitCount: 0,
+        hitPenaltyRounds: 0
+      });
+      // Add empty hand and spreads for AI
+      gameState.playerHands.push([]);
+      gameState.playerSpreads.push([]);
+      console.log(`🤖 AI Addition: AI player ${aiPlayer.username} added to game state`);
     }
   }
-  // Condition 2: If there is only human vs AI at a table and the human leaves, the AI needs to leave as well
-  // This condition is typically handled by the player leaving logic, not game end.
-  // However, if a human player leaves and it results in only one human and one AI, and then the game ends,
-  // the above condition (humanPlayers.length >= 2) would not apply.
-  // This specific scenario (human leaves, then AI leaves if only human vs AI) needs to be handled
-  // where player disconnections are processed, likely in useWebSocket.js or gameActions.js.
-  // For now, I'll assume this function is called only when the game *ends*.
-  // If a human leaves mid-game, the game state would be updated elsewhere, and then if the game ends,
-  // the above logic would apply.
 
-  console.log(`🤖 AI Departure: After check - remaining players:`, gameState.players.map(p => p.username));
+  console.log(`🤖 AI Management (${action}): After check - remaining players:`, gameState.players.map(p => p.username));
 };
 
 

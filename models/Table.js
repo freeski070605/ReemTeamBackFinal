@@ -66,20 +66,20 @@ const tableSchema = new mongoose.Schema({
   lastGameEndedAt: Date // Ensure this field exists if used elsewhere
 });
 
-// First, define the preset tables configuration
+// First, define the preset tables configuration - exactly 2 tables per stake level as per spec
 const PRESET_TABLES = [
-  { name: "Table 1", stake: 1 },
-  { name: "Table 2", stake: 1 },
-  { name: "Table 3", stake: 5 },
-  { name: "Table 4", stake: 5 },
-  { name: "Table 5", stake: 10 },
-  { name: "Table 6", stake: 10 },
-  { name: "Table 7", stake: 20 },
-  { name: "Table 8", stake: 20 },
-  { name: "Table 9", stake: 50 },
-  { name: "Table 10", stake: 50 },
-  { name: "Table 11", stake: 100 },
-  { name: "Table 12", stake: 100 }
+  { name: "$1 Table A", stake: 1 },
+  { name: "$1 Table B", stake: 1 },
+  { name: "$5 Table A", stake: 5 },
+  { name: "$5 Table B", stake: 5 },
+  { name: "$10 Table A", stake: 10 },
+  { name: "$10 Table B", stake: 10 },
+  { name: "$20 Table A", stake: 20 },
+  { name: "$20 Table B", stake: 20 },
+  { name: "$50 Table A", stake: 50 },
+  { name: "$50 Table B", stake: 50 },
+  { name: "$100 Table A", stake: 100 },
+  { name: "$100 Table B", stake: 100 }
 ];
 
 

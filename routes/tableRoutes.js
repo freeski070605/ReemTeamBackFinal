@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const {Table} = require('../models/Table');
+const {Table, PRESET_TABLES} = require('../models/Table');
 const { authenticateToken, isAdmin } = require('../middleware/authMiddleware');
 const { handlePlayerLeave } = require('../utils/leaveTableHandler');
 

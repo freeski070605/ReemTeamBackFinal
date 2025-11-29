@@ -113,7 +113,8 @@ router.post('/login', async (req, res) => {
             chips: user.chips,
             isAdmin: user.isAdmin,
             stats: user.stats,
-            lastLogin: user.lastLogin
+            lastLogin: user.lastLogin,
+            avatarUrl: user.avatarUrl
         };
 
         req.session.userId = user._id;

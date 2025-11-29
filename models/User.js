@@ -5,7 +5,8 @@ const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: false, unique: true },
     password: { type: String, required: true },
-    chips: { type: Number, default: 100 },
+    cashBalance: { type: Number, default: 1000 }, // Rename chips to cashBalance per spec
+    avatarUrl: { type: String, default: 'https://i.pravatar.cc/150' }, // Default placeholder avatar
     isAdmin: { type: Boolean, default: false },
     music: [{ type: String }],
     videos: [{ type: String }],

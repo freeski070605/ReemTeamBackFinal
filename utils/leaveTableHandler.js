@@ -1,5 +1,6 @@
 // utils/leaveTableHandler.js
 const { Table } = require('../models/Table');
+const { handleAiDeparture } = require('../models/gameLogic');
 
 /**
  * Save table with retry logic to handle version conflicts
@@ -89,11 +90,13 @@ const handlePlayerLeave = async ({ tableId, username, io = null, isDisconnect = 
         const remainingActivePlayers = table.players.filter(p => p.status === 'active');
         const remainingHumans = remainingActivePlayers.filter(p => p.isHuman);
         const remainingAI = remainingActivePlayers.filter(p => !p.isHuman);
-        
+
         // Add AI if only 1 human left and no AI present
         if (remainingHumans.length === 1 && remainingAI.length === 0) {
           console.log(`🤖 Adding AI to replace leaving player at table ${table._id}`);
-          await addAiPlayerToActiveGame(table);
+          const aiPlayer = await addAiPlayerToActiveGame(table);
+          // Update game state with AI addition
+          handleAiDeparture(table.gameState, 'addition', aiPlayer);
         }
       }
     }
@@ -103,7 +106,7 @@ const handlePlayerLeave = async ({ tableId, username, io = null, isDisconnect = 
       const remainingActivePlayers = table.players.filter(p => p.status === 'active');
       const remainingHumans = remainingActivePlayers.filter(p => p.isHuman);
       const remainingAI = remainingActivePlayers.filter(p => !p.isHuman);
-      
+
       // Add AI if only 1 human left and no AI present
       if (remainingHumans.length === 1 && remainingAI.length === 0) {
         console.log(`🤖 Adding AI companion for lone human at waiting table ${table._id}`);
@@ -285,6 +288,16 @@ const handlePlayerReconnect = async ({ tableId, username, socketId, io = null })
     }
     
     if (player.status === 'disconnected') {
+      // Disconnect any existing sockets for this user at this table
+      if (io) {
+        for (const s of io.sockets.sockets.values()) {
+          if (s.userId === player.username && s.id !== socketId) {
+            console.log(`🔌 Disconnecting old socket ${s.id} for user ${username} at table ${tableId}`);
+            s.disconnect(true);
+          }
+        }
+      }
+
       // Reconnect the player
       player.status = 'active';
       player.socketId = socketId;
@@ -292,6 +305,15 @@ const handlePlayerReconnect = async ({ tableId, username, socketId, io = null })
       
       await saveTableWithRetry(table);
       
+      // Update socketId in gameState.players as well
+      if (table.gameState && table.gameState.players) {
+        const gameStatePlayerIndex = table.gameState.players.findIndex(p => p.username === username);
+        if (gameStatePlayerIndex !== -1) {
+          table.gameState.players[gameStatePlayerIndex].socketId = socketId;
+          console.log(`🎯 Updated gameState.players[${gameStatePlayerIndex}].socketId to ${socketId}`);
+        }
+      }
+
       console.log(`🔄 Player ${username} reconnected to table ${tableId} with new socket ID: ${socketId}`);
       
       if (io) {
@@ -440,7 +462,7 @@ const cleanupEmptyTables = async (io) => {
  */
 const addAiPlayerToActiveGame = async (table) => {
   const aiPlayerName = `AI Player ${table._id.toString().slice(-4)}`;
-  
+
   const aiPlayer = {
     username: aiPlayerName,
     chips: 1000,
@@ -449,30 +471,14 @@ const addAiPlayerToActiveGame = async (table) => {
     joinedAt: new Date(),
     status: 'active'
   };
-  
+
   table.players.push(aiPlayer);
-  
-  // Add AI to game state if game is active
-  if (table.gameState && table.gameState.gameStarted) {
-    // Add AI to game state players
-    table.gameState.players.push({
-      username: aiPlayerName,
-      chips: 1000,
-      isHuman: false,
-      socketId: null,
-      status: 'active',
-      hitCount: 0,
-      hitPenaltyRounds: 0
-    });
-    
-    // Add empty hand and spreads for AI
-    table.gameState.playerHands.push([]);
-    table.gameState.playerSpreads.push([]);
-    
-    console.log(`🤖 Added AI player ${aiPlayerName} to active game at table ${table._id}`);
-  }
-  
+
+  console.log(`🤖 Added AI player ${aiPlayerName} to active game at table ${table._id}`);
+
   await saveTableWithRetry(table);
+
+  return aiPlayer;
 };
 
 /**
