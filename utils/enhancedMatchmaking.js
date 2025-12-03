@@ -469,6 +469,10 @@ class EnhancedMatchmaking {
           // Update the player object in the table's players array to reflect new chip count
           player.chips = user.chips;
           console.log(`💸 Deducted ${table.stake} chips from ${player.username}. New balance: ${player.chips}`);
+        } else {
+          // User not found in database - set chips to 0 to prevent NaN validation errors
+          player.chips = 0;
+          console.warn(`⚠️ User ${player.username} not found in database - setting chips to 0`);
         }
       }
     }
