@@ -306,22 +306,22 @@ const handleWebSocketConnection = async (socket, io) => {
          // Dispatch to appropriate handler based on event name
          switch (eventName) {
              case 'join_queue':
-                 await handleJoinQueue(parsedEventData);
+                 await handleJoinQueue(parsedEventData.payload);
                  break;
              case 'join_table':
-                 await handleJoinTable(parsedEventData);
+                 await handleJoinTable(parsedEventData.payload);
                  break;
              case 'join_spectator':
-                 await handleJoinSpectator(parsedEventData);
+                 await handleJoinSpectator(parsedEventData.payload);
                  break;
              case 'leave_queue':
-                 await handleLeaveQueue(parsedEventData);
+                 await handleLeaveQueue(parsedEventData.payload);
                  break;
              case 'request_state_sync':
-                 await handleRequestStateSync(parsedEventData);
+                 await handleRequestStateSync(parsedEventData.payload);
                  break;
              case 'game_action':
-                 await handleGameAction(io, socket, parsedEventData, gameStateManager);
+                 await handleGameAction(io, socket, parsedEventData.payload, gameStateManager);
                  break;
              default:
                  console.warn(`⚠️ Unknown unity event: ${eventName}`);
