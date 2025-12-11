@@ -361,7 +361,7 @@ const handleWebSocketConnection = async (socket, io) => {
           // Use enhanced game state manager for seamless mid-game joins
           const newPlayerData = {
               username: player.username,
-              chips: player.chips,
+              chips: (typeof player.chips === 'number' && !isNaN(player.chips)) ? player.chips : 1000,
               isHuman: true,
               socketId: socket.id,
               joinedAt: new Date(),
