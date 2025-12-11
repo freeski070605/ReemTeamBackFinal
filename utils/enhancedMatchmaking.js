@@ -462,6 +462,8 @@ class EnhancedMatchmaking {
       if (player.isHuman) { // Only deduct from human players
         const user = await User.findOne({ username: player.username });
         if (user) {
+          // Ensure chips is a valid number
+          user.chips = Number(user.chips) || 1000;
           user.chips -= table.stake;
           // Ensure chips don't go below zero if somehow stake is higher than chips
           user.chips = Math.max(0, user.chips);
