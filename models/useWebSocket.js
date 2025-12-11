@@ -340,7 +340,7 @@ const handleWebSocketConnection = async (socket, io) => {
       resetInactivityTimeout(socket, io);
       try {
           // Validate input data
-          if (!tableId || !player || !player.username) {
+          if (!tableId || tableId === 'undefined' || tableId === '' || !player || !player.username) {
               console.error('Invalid join_table data:', { tableId, player });
               socket.emit('error', { message: 'Invalid table or player data' });
               return;
@@ -526,7 +526,7 @@ const handleWebSocketConnection = async (socket, io) => {
     resetInactivityTimeout(socket, io);
     try {
       // Validate input
-      if (!tableId) {
+      if (!tableId || tableId === 'undefined' || tableId === '') {
           console.error('❌ STATE_SYNC_ERROR: No tableId provided');
           socket.emit('error', { message: 'No table ID provided' });
           return;
