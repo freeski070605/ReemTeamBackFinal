@@ -49,7 +49,7 @@ router.post('/register', async (req, res) => {
             username: username.trim(),
             email: email.trim().toLowerCase(),
             password,
-            cashBalance: 1000, // Starting cash balance for new users
+            chips: 1000, // Starting cash balance for new users
             isAdmin: false,
             lastLogin: new Date(),
             stats: {
@@ -64,7 +64,7 @@ router.post('/register', async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'Registration successful',
-            initialCashBalance: user.cashBalance
+            initialCashBalance: user.chips
         });
 
     } catch (error) {
@@ -110,7 +110,7 @@ router.post('/login', async (req, res) => {
             _id: user._id,
             username: user.username,
             email: user.email,
-            cashBalance: user.cashBalance,
+            cashBalance: user.chips,
             isAdmin: user.isAdmin,
             stats: user.stats,
             lastLogin: user.lastLogin,
@@ -205,8 +205,8 @@ router.put('/:username/updateCashBalance', async (req, res) => {
             });
         }
 
-        const previousBalance = user.cashBalance;
-        user.cashBalance = cashBalance;
+        const previousBalance = user.chips;
+        user.chips = cashBalance;
         // Initialize stats if they don't exist
         if (!user.stats) {
             user.stats = {
@@ -229,8 +229,8 @@ router.put('/:username/updateCashBalance', async (req, res) => {
         // Log transaction
         user.transactions = user.transactions || [];
         user.transactions.push({
-            amount: chips - previousBalance,
-            type: chips > previousBalance ? 'WIN' : 'LOSS',
+            amount: cashBalance - previousBalance,
+            type: cashBalance > previousBalance ? 'WIN' : 'LOSS',
             gameId,
             reason,
             timestamp: new Date(),
@@ -291,7 +291,7 @@ router.get('/:username', async (req, res) => {
 router.get('/:username/balance', async (req, res) => {
     try {
         const user = await User.findOne({ username: req.params.username })
-            .select('cashBalance');
+            .select('chips');
 
         if (!user) {
             return res.status(404).json({
@@ -302,7 +302,7 @@ router.get('/:username/balance', async (req, res) => {
 
         res.status(200).json({
             success: true,
-            cashBalance: user.cashBalance
+            chips: user.chips
         });
     } catch (error) {
         res.status(500).json({
