@@ -35,10 +35,10 @@ router.post('/buy-chips', authenticate, async (req, res) => {
         });
 
         const user = await User.findById(req.userId);
-        user.chips += amount / 100;
+        user.cashBalance += amount / 100;
         await user.save();
 
-        res.json({ success: true, payment: response.result.payment, chips: user.chips });
+        res.json({ success: true, payment: response.result.payment, cashBalance: user.cashBalance });
     } catch (error) {
         console.error(error);
         res.json({ success: false, error: error.message });

@@ -306,22 +306,22 @@ const handleWebSocketConnection = async (socket, io) => {
          // Dispatch to appropriate handler based on event name
          switch (eventName) {
              case 'join_queue':
-                 await handleJoinQueue(parsedEventData);
+                 await handleJoinQueue(parsedEventData.payload);
                  break;
              case 'join_table':
-                 await handleJoinTable(parsedEventData);
+                 await handleJoinTable(parsedEventData.payload);
                  break;
              case 'join_spectator':
-                 await handleJoinSpectator(parsedEventData);
+                 await handleJoinSpectator(parsedEventData.payload);
                  break;
              case 'leave_queue':
-                 await handleLeaveQueue(parsedEventData);
+                 await handleLeaveQueue(parsedEventData.payload);
                  break;
              case 'request_state_sync':
-                 await handleRequestStateSync(parsedEventData);
+                 await handleRequestStateSync(parsedEventData.payload);
                  break;
              case 'game_action':
-                 await handleGameAction(io, socket, parsedEventData, gameStateManager);
+                 await handleGameAction(io, socket, parsedEventData.payload, gameStateManager);
                  break;
              default:
                  console.warn(`⚠️ Unknown unity event: ${eventName}`);
@@ -340,7 +340,7 @@ const handleWebSocketConnection = async (socket, io) => {
       resetInactivityTimeout(socket, io);
       try {
           // Validate input data
-          if (!tableId || !player || !player.username) {
+          if (!tableId || tableId === 'undefined' || tableId === '' || !player || !player.username) {
               console.error('Invalid join_table data:', { tableId, player });
               socket.emit('error', { message: 'Invalid table or player data' });
               return;
@@ -361,7 +361,7 @@ const handleWebSocketConnection = async (socket, io) => {
           // Use enhanced game state manager for seamless mid-game joins
           const newPlayerData = {
               username: player.username,
-              chips: player.chips,
+              chips: (typeof player.chips === 'number' && !isNaN(player.chips)) ? player.chips : 1000,
               isHuman: true,
               socketId: socket.id,
               joinedAt: new Date(),
@@ -526,7 +526,7 @@ const handleWebSocketConnection = async (socket, io) => {
     resetInactivityTimeout(socket, io);
     try {
       // Validate input
-      if (!tableId) {
+      if (!tableId || tableId === 'undefined' || tableId === '') {
           console.error('❌ STATE_SYNC_ERROR: No tableId provided');
           socket.emit('error', { message: 'No table ID provided' });
           return;

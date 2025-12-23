@@ -42,7 +42,7 @@ const tableSchema = new mongoose.Schema({
       username: String,
       socketId: String,
       joinedAt: Date,
-      chips: Number,
+      cashBalance: Number,
       transitionId: String,
       type: String,
       isHuman: Boolean,
